@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { ERROR_CODES } from '@ospm/shared';
 import * as argon2 from 'argon2';
 import { randomBytes } from 'node:crypto';
-import { AppException, notFound } from '../common/errors';
+import { AppException, forbidden, notFound } from '../common/errors';
 import { PrismaService } from '../common/prisma.service';
 import { publicUser } from '../auth/auth.service';
 import { CreateUserDto, ListUsersQuery, UpdateUserDto } from './users.dto';
@@ -33,14 +33,27 @@ export class UsersService {
     return publicUser(u);
   }
 
-  async update(id: bigint, dto: UpdateUserDto) {
+  async update(id: bigint, dto: UpdateUserDto, actorId: bigint) {
     const existing = await this.prisma.user.findUnique({ where: { id } });
     if (!existing) throw notFound(ERROR_CODES.USER_NOT_FOUND, 'Không tìm thấy người dùng');
-    const u = await this.prisma.user.update({ where: { id }, data: dto });
-    if (dto.isActive === false) {
-      await this.prisma.refreshToken.updateMany({ where: { userId: id, revokedAt: null }, data: { revokedAt: new Date() } });
+    if (id === actorId && (dto.isActive === false || (dto.systemRole !== undefined && dto.systemRole !== existing.systemRole))) {
+      throw forbidden('Không thể tự khóa hoặc thay đổi vai trò của chính mình');
     }
-    return publicUser(u);
+    try {
+      const u = await this.prisma.$transaction(async (tx) => {
+        const updated = await tx.user.update({ where: { id }, data: dto });
+        if (dto.isActive === false) {
+          await tx.refreshToken.updateMany({ where: { userId: id, revokedAt: null }, data: { revokedAt: new Date() } });
+        }
+        return updated;
+      });
+      return publicUser(u);
+    } catch (e: unknown) {
+      if ((e as { code?: string })?.code === 'P2002') {
+        throw new AppException(409, ERROR_CODES.EMAIL_TAKEN, 'Email đã được sử dụng');
+      }
+      throw e;
+    }
   }
 
   async resetPassword(id: bigint) {

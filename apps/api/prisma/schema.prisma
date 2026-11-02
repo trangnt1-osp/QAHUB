@@ -58,6 +58,8 @@ model Project {
   key         String    @unique
   name        String
   description String?
+  startDate   DateTime? @map("start_date") @db.Date
+  endDate     DateTime? @map("end_date") @db.Date
   leadId      BigInt?   @map("lead_id")
   issueSeq    BigInt    @default(0) @map("issue_seq")
   settings    Json      @default("{}")
@@ -85,14 +87,18 @@ model Project {
 }
 
 model ProjectMember {
+  id        BigInt   @id @default(autoincrement())
   projectId BigInt   @map("project_id")
   userId    BigInt   @map("user_id")
   role      String
   joinedAt  DateTime @default(now()) @map("joined_at") @db.Timestamptz(6)
+  leftAt    DateTime? @map("left_at") @db.Timestamptz(6)
   project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@id([projectId, userId])
+  // Active participation is unique via a partial index in migration SQL.
+  @@index([projectId, userId])
+  @@index([projectId, leftAt])
   @@map("project_members")
 }
 

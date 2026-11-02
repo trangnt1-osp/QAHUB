@@ -7,6 +7,7 @@ import { createTestCategory, deleteTestCategory, getProject, updateProject, upda
 import { errorMessage } from '../../api/http';
 import { useTestCategories } from '../../api/hooks';
 import { UserSelect } from '../../components/UserSelect';
+import { ProjectDateFields, projectDateInitialValues, projectDatePayload } from '../projects/ProjectDateFields';
 
 export function GeneralSettings() {
   const { projectKey = '' } = useParams();
@@ -16,7 +17,7 @@ export function GeneralSettings() {
   const [newCat, setNewCat] = useState('');
   const qc = useQueryClient();
   const { message } = App.useApp();
-  useEffect(() => { if (project) form.setFieldsValue({ name: project.name, description: project.description, leadId: project.lead?.id }); }, [project, form]);
+  useEffect(() => { if (project) form.setFieldsValue({ name: project.name, description: project.description, leadId: project.lead?.id, ...projectDateInitialValues(project) }); }, [project, form]);
   const refreshCats = () => qc.invalidateQueries({ queryKey: ['test-categories', projectKey] });
   const move = async (i: number, d: -1 | 1) => {
     const a = cats[i], b = cats[i + d];
@@ -26,10 +27,11 @@ export function GeneralSettings() {
   return (
     <Space direction="vertical" size="large" style={{ width: '100%', maxWidth: 720 }}>
       <Card title="Thông tin dự án">
-        <Form form={form} layout="vertical" onFinish={async (v) => { try { await updateProject(projectKey, { name: v.name, description: v.description, leadId: v.leadId ?? null }); message.success('Đã lưu'); await qc.invalidateQueries(); } catch (e) { message.error(errorMessage(e)); } }}>
+        <Form form={form} layout="vertical" onFinish={async (v) => { try { await updateProject(projectKey, { name: v.name, description: v.description, leadId: v.leadId ?? null, ...projectDatePayload(v) }); message.success('Đã lưu'); await qc.invalidateQueries(); } catch (e) { message.error(errorMessage(e)); } }}>
           <Form.Item name="name" label="Tên" rules={[{ required: true }]}><Input /></Form.Item>
           <Form.Item name="description" label="Mô tả"><Input.TextArea rows={2} /></Form.Item>
           <Form.Item name="leadId" label="Lead"><UserSelect projectKey={projectKey} onChange={() => undefined} /></Form.Item>
+          <ProjectDateFields />
           <Button type="primary" htmlType="submit">Lưu</Button>
         </Form>
       </Card>

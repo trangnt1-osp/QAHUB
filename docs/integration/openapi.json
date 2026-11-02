@@ -475,6 +475,18 @@
         "operationId": "listProjectMembers",
         "parameters": [
           {
+            "name": "status",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "enum": [
+                "active",
+                "all"
+              ],
+              "type": "string"
+            }
+          },
+          {
             "name": "projectKey",
             "in": "path",
             "required": true,
@@ -586,6 +598,47 @@
         ],
         "responses": {
           "204": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "projects"
+        ]
+      }
+    },
+    "/api/v1/projects/{projectKey}/members/{userId}/leave": {
+      "post": {
+        "operationId": "leaveProjectMember",
+        "parameters": [
+          {
+            "name": "userId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "projectKey",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LeaveMemberDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
             "description": ""
           }
         },
@@ -3029,6 +3082,10 @@
       "UpdateUserDto": {
         "type": "object",
         "properties": {
+          "email": {
+            "type": "string",
+            "format": "email"
+          },
           "displayName": {
             "type": "string",
             "minLength": 1
@@ -3188,6 +3245,16 @@
           },
           "workflowTemplateId": {
             "type": "number"
+          },
+          "startDate": {
+            "type": "string",
+            "nullable": true,
+            "pattern": "/^\\d{4}-\\d{2}-\\d{2}$/"
+          },
+          "endDate": {
+            "type": "string",
+            "nullable": true,
+            "pattern": "/^\\d{4}-\\d{2}-\\d{2}$/"
           }
         },
         "required": [
@@ -3209,6 +3276,16 @@
           "leadId": {
             "type": "number",
             "nullable": true
+          },
+          "startDate": {
+            "type": "string",
+            "nullable": true,
+            "pattern": "/^\\d{4}-\\d{2}-\\d{2}$/"
+          },
+          "endDate": {
+            "type": "string",
+            "nullable": true,
+            "pattern": "/^\\d{4}-\\d{2}-\\d{2}$/"
           }
         }
       },
@@ -3234,6 +3311,10 @@
               "tester",
               "viewer"
             ]
+          },
+          "joinedAt": {
+            "type": "string",
+            "pattern": "/^\\d{4}-\\d{2}-\\d{2}$/"
           }
         },
         "required": [
@@ -3257,6 +3338,15 @@
         "required": [
           "role"
         ]
+      },
+      "LeaveMemberDto": {
+        "type": "object",
+        "properties": {
+          "leftAt": {
+            "type": "string",
+            "pattern": "/^\\d{4}-\\d{2}-\\d{2}$/"
+          }
+        }
       },
       "CreateIssueDto": {
         "type": "object",

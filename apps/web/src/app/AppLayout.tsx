@@ -31,16 +31,17 @@ export function AppLayout() {
   }, [nav, loc.pathname, loc.search]);
 
   const isAnyProjectAdmin = isSystemAdmin() || projects.some((p) => p.role === 'admin');
+  const isAdmin = isSystemAdmin();
   // 6 menu chính (mục 1); Member/API Keys/Cấu hình chỉ hiện với người có quyền
   const items = useMemo(
     () => [
       { key: '/dashboard', icon: <DashboardOutlined />, label: 'Dashboard' },
       { key: '/projects', icon: <AppstoreOutlined />, label: 'Dự án' },
-      ...(isAnyProjectAdmin ? [{ key: '/members', icon: <TeamOutlined />, label: 'Member' }] : []),
+      ...(isAdmin ? [{ key: '/members', icon: <TeamOutlined />, label: 'Member' }] : []),
       { key: '/reports', icon: <BarChartOutlined />, label: 'Report' },
       ...(isAnyProjectAdmin ? [{ key: '/api-keys', icon: <KeyOutlined />, label: 'API Keys' }, { key: '/settings', icon: <SettingOutlined />, label: 'Cấu hình' }] : []),
     ],
-    [isAnyProjectAdmin],
+    [isAnyProjectAdmin, isAdmin],
   );
   const selected = items.find((i) => loc.pathname.startsWith(i.key) || (i.key === '/projects' && loc.pathname.startsWith('/browse')))?.key;
 

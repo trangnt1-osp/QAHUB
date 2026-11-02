@@ -33,6 +33,7 @@ export interface Page<T> { items: T[]; nextCursor: string | null }
 export interface ProjectRow {
   id: number; key: string; name: string; description: string | null; lead: UserBrief | null; myRole: string | null;
   openIssues: number; pendingReview: number; activeSprint: { id: number; name: string } | null; createdAt: string;
+  startDate: string | null; endDate: string | null;
 }
 
 export interface WorkflowStatus { id: number; name: string; category: StatusCategory; color: string; position: number; showOnBoard: boolean; isArchived: boolean; issueCount?: number }

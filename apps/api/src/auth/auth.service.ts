@@ -61,7 +61,7 @@ export class AuthService {
       user.systemRole === 'admin'
         ? (await this.prisma.project.findMany({ where: { deletedAt: null }, orderBy: { key: 'asc' } })).map((p) => ({ projectId: p.id, projectKey: p.key, projectName: p.name, role: 'admin' }))
         : (
-            await this.prisma.projectMember.findMany({ where: { userId, project: { deletedAt: null } }, include: { project: true }, orderBy: { project: { key: 'asc' } } })
+            await this.prisma.projectMember.findMany({ where: { userId, leftAt: null, project: { deletedAt: null } }, include: { project: true }, orderBy: { project: { key: 'asc' } } })
           ).map((m) => ({ projectId: m.projectId, projectKey: m.project.key, projectName: m.project.name, role: m.role }));
     return { user: publicUser(user), projects };
   }

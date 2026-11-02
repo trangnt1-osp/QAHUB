@@ -70,7 +70,7 @@ export class ProjectContextService {
   /** Vai trò hiệu lực của user trong dự án (system admin = admin); null nếu không phải thành viên. */
   async roleOf(user: { id: bigint; systemRole: string }, projectId: bigint): Promise<ProjectRole | null> {
     if (user.systemRole === 'admin') return 'admin';
-    const m = await this.prisma.projectMember.findUnique({ where: { projectId_userId: { projectId, userId: user.id } }, select: { role: true } });
+    const m = await this.prisma.projectMember.findFirst({ where: { projectId, userId: user.id, leftAt: null }, select: { role: true } });
     return (m?.role as ProjectRole) ?? null;
   }
 

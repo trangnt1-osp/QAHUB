@@ -11,7 +11,7 @@ export class DashboardService {
     const isAdmin = user.systemRole === 'admin';
     const memberships = isAdmin
       ? (await this.prisma.project.findMany({ where: { deletedAt: null }, select: { id: true } })).map((p) => ({ projectId: p.id, role: 'admin' }))
-      : await this.prisma.projectMember.findMany({ where: { userId: user.id, project: { deletedAt: null } }, select: { projectId: true, role: true } });
+      : await this.prisma.projectMember.findMany({ where: { userId: user.id, leftAt: null, project: { deletedAt: null } }, select: { projectId: true, role: true } });
     const projectIds = memberships.map((m) => m.projectId);
     const triageIds = memberships.filter((m) => m.role === 'tester' || m.role === 'admin').map((m) => m.projectId);
 
@@ -27,7 +27,7 @@ export class DashboardService {
                p.id AS "projectId", p.key AS "projectKey", p.name AS "projectName",
                json_build_object('id', s.id, 'name', s.name, 'color', s.color, 'category', s.category) AS status
         FROM issues i JOIN projects p ON p.id = i.project_id JOIN workflow_statuses s ON s.id = i.status_id
-        WHERE i.assignee_id = ${user.id} AND i.deleted_at IS NULL AND s.category NOT IN ('done', 'triage') AND p.deleted_at IS NULL
+        WHERE i.assignee_id = ${user.id} AND i.project_id = ANY(${projectIds}) AND i.deleted_at IS NULL AND s.category NOT IN ('done', 'triage') AND p.deleted_at IS NULL
         ORDER BY p.key, array_position(ARRAY['highest','high','medium','low','lowest'], i.priority), i.updated_at DESC`,
       this.prisma.automationRun.findMany({
         where: { projectId: { in: projectIds } }, orderBy: { id: 'desc' }, take: 5,

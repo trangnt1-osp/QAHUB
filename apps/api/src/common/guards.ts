@@ -50,8 +50,8 @@ export class RolesGuard implements CanActivate {
     let role: ProjectRoleName | null = null;
     if (user.systemRole === 'admin') role = 'admin';
     else {
-      const m = await this.prisma.projectMember.findUnique({
-        where: { projectId_userId: { projectId: project.id, userId: user.id } },
+      const m = await this.prisma.projectMember.findFirst({
+        where: { projectId: project.id, userId: user.id, leftAt: null },
         select: { role: true },
       });
       role = (m?.role as ProjectRoleName) ?? null;

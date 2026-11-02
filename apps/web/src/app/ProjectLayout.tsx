@@ -1,4 +1,4 @@
-import { CheckSquareOutlined, GlobalOutlined, ProjectOutlined, UnorderedListOutlined } from '@ant-design/icons';
+import { CheckSquareOutlined, GlobalOutlined, InfoCircleOutlined, ProjectOutlined, UnorderedListOutlined } from '@ant-design/icons';
 import { Breadcrumb, Tabs, Typography } from 'antd';
 import { ComponentType, lazy, Suspense } from 'react';
 import { Link, Outlet, useLocation, useNavigate, useParams } from 'react-router-dom';
@@ -8,6 +8,7 @@ import { ErrorState } from '../components/EmptyState';
 import BacklogPage from '../features/backlog/BacklogPage';
 import BoardPage from '../features/board/BoardPage';
 import SummaryPage from '../features/summary/SummaryPage';
+import ProjectInfoPage from '../features/projects/ProjectInfoPage';
 // AG Grid khá nặng nên chỉ tải khi mở tab Test cases
 const TestCasesPage = lazy(() => import('../features/test-cases/TestCasesPage'));
 
@@ -21,6 +22,7 @@ export interface ProjectTab {
 
 /** Thêm tab mới (Timeline, List...) chỉ cần thêm một phần tử vào mảng này (mục 9). */
 export const projectTabs: ProjectTab[] = [
+  { key: 'info', label: 'Thông tin dự án', icon: InfoCircleOutlined, path: 'info', element: ProjectInfoPage },
   { key: 'summary', label: 'Summary', icon: GlobalOutlined, path: 'summary', element: SummaryPage },
   { key: 'backlog', label: 'Backlog', icon: UnorderedListOutlined, path: 'backlog', element: BacklogPage },
   { key: 'board', label: 'Active sprint', icon: ProjectOutlined, path: 'board', element: BoardPage },

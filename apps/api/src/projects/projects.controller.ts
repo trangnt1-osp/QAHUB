@@ -1,8 +1,8 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Query } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { parseId } from '../common/bigint';
 import { AuthUser, CurrentProject, CurrentUser, ProjectContext, ProjectRole, SystemRole } from '../common/decorators';
-import { AddMemberDto, CreateProjectDto, UpdateMemberDto, UpdateProjectDto, UpdateSettingsDto } from './projects.dto';
+import { AddMemberDto, CreateProjectDto, LeaveMemberDto, ListMembersQuery, UpdateMemberDto, UpdateProjectDto, UpdateSettingsDto } from './projects.dto';
 import { ProjectsService } from './projects.service';
 
 @ApiTags('projects')
@@ -37,8 +37,8 @@ export class ProjectsController {
     return this.projects.updateSettings(p.id, dto, u.id);
   }
 
-  @ProjectRole('viewer') @Get(':projectKey/members') listProjectMembers(@CurrentProject() p: ProjectContext) {
-    return this.projects.listMembers(p.id);
+  @ProjectRole('viewer') @Get(':projectKey/members') listProjectMembers(@CurrentProject() p: ProjectContext, @Query() q: ListMembersQuery) {
+    return this.projects.listMembers(p.id, q.status === 'all');
   }
 
   @ProjectRole('admin') @Post(':projectKey/members')
@@ -54,5 +54,10 @@ export class ProjectsController {
   @ProjectRole('admin') @Delete(':projectKey/members/:userId') @HttpCode(204)
   removeProjectMember(@CurrentProject() p: ProjectContext, @Param('userId') userId: string) {
     return this.projects.removeMember(p.id, parseId(userId));
+  }
+
+  @ProjectRole('admin') @Post(':projectKey/members/:userId/leave') @HttpCode(200)
+  leaveProjectMember(@CurrentProject() p: ProjectContext, @Param('userId') userId: string, @Body() dto: LeaveMemberDto) {
+    return this.projects.removeMember(p.id, parseId(userId), dto.leftAt);
   }
 }

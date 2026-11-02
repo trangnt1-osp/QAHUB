@@ -1,7 +1,7 @@
 import { Body, Controller, Get, HttpCode, Param, Patch, Post, Query } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { parseId } from '../common/bigint';
-import { SystemRole } from '../common/decorators';
+import { AuthUser, CurrentUser, SystemRole } from '../common/decorators';
 import { CreateUserDto, ListUsersQuery, UpdateUserDto } from './users.dto';
 import { UsersService } from './users.service';
 
@@ -19,8 +19,8 @@ export class UsersController {
     return this.users.create(dto);
   }
 
-  @SystemRole('admin') @Patch(':id') updateUser(@Param('id') id: string, @Body() dto: UpdateUserDto) {
-    return this.users.update(parseId(id), dto);
+  @SystemRole('admin') @Patch(':id') updateUser(@Param('id') id: string, @Body() dto: UpdateUserDto, @CurrentUser() actor: AuthUser) {
+    return this.users.update(parseId(id), dto, actor.id);
   }
 
   @SystemRole('admin') @Post(':id/reset-password') @HttpCode(200)

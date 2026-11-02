@@ -1,13 +1,21 @@
 import { Injectable } from '@nestjs/common';
 import { ERROR_CODES, SYSTEM_LABELS, WorkflowTemplateDefinition, DEFAULT_TEST_CATEGORIES } from '@ospm/shared';
 import { ActivityService } from '../activity/activity.service';
-import { AppException, notFound } from '../common/errors';
-import { PrismaService } from '../common/prisma.service';
+import { AppException, badRequest, notFound } from '../common/errors';
+import { PrismaService, Tx } from '../common/prisma.service';
 import { applyTemplateDefinition } from '../workflows/workflow-bootstrap';
 import { AddMemberDto, CreateProjectDto, UpdateMemberDto, UpdateProjectDto, UpdateSettingsDto } from './projects.dto';
 import type { AuthUser } from '../common/decorators';
 
 const LABEL_COLORS: Record<string, string> = { manual: '#8c8c8c', auto: '#722ed1' };
+const projectDate = (value: string | null | undefined) => value === undefined ? undefined : value === null ? null : new Date(`${value}T00:00:00.000Z`);
+const memberDay = (date: Date) => new Date(date.getTime() + 7 * 3600_000).toISOString().slice(0, 10);
+
+function validateProjectDates(startDate: Date | null | undefined, endDate: Date | null | undefined) {
+  if (startDate && endDate && endDate < startDate) {
+    throw badRequest(ERROR_CODES.VALIDATION_ERROR, 'Ngày kết thúc không được trước ngày bắt đầu');
+  }
+}
 
 @Injectable()
 export class ProjectsService {
@@ -15,8 +23,8 @@ export class ProjectsService {
 
   async list(user: AuthUser) {
     const projects = await this.prisma.project.findMany({
-      where: { deletedAt: null, ...(user.systemRole === 'admin' ? {} : { members: { some: { userId: user.id } } }) },
-      include: { lead: { select: { id: true, displayName: true, avatarUrl: true } }, members: { where: { userId: user.id }, select: { role: true } } },
+      where: { deletedAt: null, ...(user.systemRole === 'admin' ? {} : { members: { some: { userId: user.id, leftAt: null } } }) },
+      include: { lead: { select: { id: true, displayName: true, avatarUrl: true } }, members: { where: { userId: user.id, leftAt: null }, select: { role: true } } },
       orderBy: { key: 'asc' },
     });
     const ids = projects.map((p) => p.id);
@@ -33,7 +41,7 @@ export class ProjectsService {
     const pendBy = new Map(pending.map((r) => [r.project_id, Number(r.n)]));
     const sprintBy = new Map(sprints.map((s) => [s.projectId, s]));
     return projects.map((p) => ({
-      id: p.id, key: p.key, name: p.name, description: p.description, lead: p.lead, createdAt: p.createdAt,
+      id: p.id, key: p.key, name: p.name, description: p.description, lead: p.lead, startDate: p.startDate, endDate: p.endDate, createdAt: p.createdAt,
       myRole: user.systemRole === 'admin' ? 'admin' : p.members[0]?.role ?? null,
       openIssues: openBy.get(p.id) ?? 0,
       pendingReview: pendBy.get(p.id) ?? 0,
@@ -42,6 +50,7 @@ export class ProjectsService {
   }
 
   async create(dto: CreateProjectDto, actor: AuthUser) {
+    validateProjectDates(projectDate(dto.startDate), projectDate(dto.endDate));
     if (await this.prisma.project.findUnique({ where: { key: dto.key } })) {
       throw new AppException(409, ERROR_CODES.PROJECT_KEY_TAKEN, `Mã dự án ${dto.key} đã tồn tại`);
     }
@@ -52,7 +61,7 @@ export class ProjectsService {
     }
     return this.prisma.$transaction(async (tx) => {
       const project = await tx.project.create({
-        data: { key: dto.key, name: dto.name, description: dto.description, leadId: dto.leadId ? BigInt(dto.leadId) : null, settings: { createBugForFlaky: false } },
+        data: { key: dto.key, name: dto.name, description: dto.description, leadId: dto.leadId ? BigInt(dto.leadId) : null, startDate: projectDate(dto.startDate), endDate: projectDate(dto.endDate), settings: { createBugForFlaky: false } },
       });
       await applyTemplateDefinition(tx, project.id, tpl.definition as unknown as WorkflowTemplateDefinition);
       for (const name of SYSTEM_LABELS) {
@@ -69,16 +78,27 @@ export class ProjectsService {
 
   async get(projectId: bigint, role: string) {
     const p = await this.prisma.project.findUniqueOrThrow({ where: { id: projectId }, include: { lead: { select: { id: true, displayName: true, avatarUrl: true } } } });
-    return { id: p.id, key: p.key, name: p.name, description: p.description, lead: p.lead, settings: p.settings, createdAt: p.createdAt, myRole: role };
+    return { id: p.id, key: p.key, name: p.name, description: p.description, lead: p.lead, startDate: p.startDate, endDate: p.endDate, settings: p.settings, createdAt: p.createdAt, myRole: role };
   }
 
   async update(projectId: bigint, dto: UpdateProjectDto, actorId: bigint) {
-    const p = await this.prisma.project.update({
-      where: { id: projectId },
-      data: { name: dto.name, description: dto.description, leadId: dto.leadId === undefined ? undefined : dto.leadId === null ? null : BigInt(dto.leadId) },
+    if (dto.leadId !== undefined && dto.leadId !== null && !(await this.prisma.user.findUnique({ where: { id: BigInt(dto.leadId) } }))) {
+      throw notFound(ERROR_CODES.USER_NOT_FOUND, 'Không tìm thấy lead');
+    }
+    return this.prisma.$transaction(async (tx) => {
+      // Serialize edits so partial date updates validate against the latest saved counterpart.
+      await tx.$queryRaw`SELECT id FROM projects WHERE id = ${projectId} FOR UPDATE`;
+      const existing = await tx.project.findUniqueOrThrow({ where: { id: projectId } });
+      const startDate = dto.startDate === undefined ? existing.startDate : projectDate(dto.startDate);
+      const endDate = dto.endDate === undefined ? existing.endDate : projectDate(dto.endDate);
+      validateProjectDates(startDate, endDate);
+      const p = await tx.project.update({
+        where: { id: projectId },
+        data: { name: dto.name, description: dto.description, leadId: dto.leadId === undefined ? undefined : dto.leadId === null ? null : BigInt(dto.leadId), startDate, endDate },
+      });
+      await this.activity.log({ projectId, entity: 'project', entityId: p.key, action: 'updated', actorId, changes: dto as any }, tx);
+      return p;
     });
-    await this.activity.log({ projectId, entity: 'project', entityId: p.key, action: 'updated', actorId, changes: dto as any });
-    return p;
   }
 
   async remove(projectId: bigint, actorId: bigint) {
@@ -95,40 +115,60 @@ export class ProjectsService {
   }
 
   // ----- Thành viên -----
-  listMembers(projectId: bigint) {
+  listMembers(projectId: bigint, includeHistory = false) {
     return this.prisma.projectMember
-      .findMany({ where: { projectId }, include: { user: { select: { id: true, email: true, displayName: true, avatarUrl: true, isActive: true } } }, orderBy: { joinedAt: 'asc' } })
-      .then((rows) => rows.map((m) => ({ userId: m.userId, role: m.role, joinedAt: m.joinedAt, user: m.user })));
+      .findMany({ where: { projectId, ...(!includeHistory ? { leftAt: null } : {}) }, include: { user: { select: { id: true, email: true, displayName: true, avatarUrl: true, isActive: true } } }, orderBy: [{ joinedAt: 'asc' }, { id: 'asc' }] })
+      .then((rows) => rows.map((m) => ({ id: m.id, userId: m.userId, role: m.role, joinedAt: m.joinedAt, leftAt: m.leftAt, user: m.user })));
   }
 
   async addMember(projectId: bigint, dto: AddMemberDto) {
     const userId = BigInt(dto.userId);
     if (!(await this.prisma.user.findUnique({ where: { id: userId } }))) throw notFound(ERROR_CODES.USER_NOT_FOUND, 'Không tìm thấy người dùng');
-    if (await this.prisma.projectMember.findUnique({ where: { projectId_userId: { projectId, userId } } })) {
-      throw new AppException(409, ERROR_CODES.MEMBER_EXISTS, 'Người dùng đã là thành viên dự án');
-    }
-    await this.prisma.projectMember.create({ data: { projectId, userId, role: dto.role } });
-    return { userId, role: dto.role };
+    const joinedAt = dto.joinedAt ? projectDate(dto.joinedAt)! : new Date();
+    if (memberDay(joinedAt) > memberDay(new Date())) throw badRequest(ERROR_CODES.VALIDATION_ERROR, 'Ngày tham gia không được ở tương lai');
+    return this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM projects WHERE id = ${projectId} FOR UPDATE`;
+      if (await tx.projectMember.findFirst({ where: { projectId, userId, leftAt: null } })) {
+        throw new AppException(409, ERROR_CODES.MEMBER_EXISTS, 'Người dùng đã là thành viên dự án');
+      }
+      const previous = await tx.projectMember.findFirst({ where: { projectId, userId, leftAt: { not: null } }, orderBy: { leftAt: 'desc' } });
+      if (previous?.leftAt && memberDay(joinedAt) < memberDay(previous.leftAt)) {
+        throw badRequest(ERROR_CODES.VALIDATION_ERROR, 'Ngày tham gia lại không được trước ngày rời lần trước');
+      }
+      return tx.projectMember.create({ data: { projectId, userId, role: dto.role, joinedAt } });
+    });
   }
 
-  private async assertNotLastAdmin(projectId: bigint, userId: bigint) {
-    const member = await this.prisma.projectMember.findUnique({ where: { projectId_userId: { projectId, userId } } });
+  private async activeMember(tx: Tx, projectId: bigint, userId: bigint) {
+    const member = await tx.projectMember.findFirst({ where: { projectId, userId, leftAt: null } });
     if (!member) throw notFound(ERROR_CODES.MEMBER_NOT_FOUND, 'Không tìm thấy thành viên');
-    if (member.role === 'admin' && (await this.prisma.projectMember.count({ where: { projectId, role: 'admin' } })) <= 1) {
+    return member;
+  }
+
+  private async assertNotLastAdmin(tx: Tx, projectId: bigint, role: string) {
+    if (role === 'admin' && (await tx.projectMember.count({ where: { projectId, role: 'admin', leftAt: null } })) <= 1) {
       throw new AppException(422, ERROR_CODES.WORKFLOW_INVALID, 'Dự án phải còn ít nhất một admin');
     }
   }
 
   async updateMember(projectId: bigint, userId: bigint, dto: UpdateMemberDto) {
-    if (dto.role !== 'admin') await this.assertNotLastAdmin(projectId, userId);
-    const m = await this.prisma.projectMember.update({ where: { projectId_userId: { projectId, userId } }, data: { role: dto.role } }).catch(() => {
-      throw notFound(ERROR_CODES.MEMBER_NOT_FOUND, 'Không tìm thấy thành viên');
+    return this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM projects WHERE id = ${projectId} FOR UPDATE`;
+      const member = await this.activeMember(tx, projectId, userId);
+      if (dto.role !== 'admin') await this.assertNotLastAdmin(tx, projectId, member.role);
+      return tx.projectMember.update({ where: { id: member.id }, data: { role: dto.role } });
     });
-    return { userId: m.userId, role: m.role };
   }
 
-  async removeMember(projectId: bigint, userId: bigint) {
-    await this.assertNotLastAdmin(projectId, userId);
-    await this.prisma.projectMember.delete({ where: { projectId_userId: { projectId, userId } } });
+  async removeMember(projectId: bigint, userId: bigint, date?: string) {
+    const leftAt = date ? projectDate(date)! : new Date();
+    if (memberDay(leftAt) > memberDay(new Date())) throw badRequest(ERROR_CODES.VALIDATION_ERROR, 'Ngày rời dự án không được ở tương lai');
+    return this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM projects WHERE id = ${projectId} FOR UPDATE`;
+      const member = await this.activeMember(tx, projectId, userId);
+      await this.assertNotLastAdmin(tx, projectId, member.role);
+      if (memberDay(leftAt) < memberDay(member.joinedAt)) throw badRequest(ERROR_CODES.VALIDATION_ERROR, 'Ngày rời không được trước ngày tham gia');
+      return tx.projectMember.update({ where: { id: member.id }, data: { leftAt } });
+    });
   }
 }
