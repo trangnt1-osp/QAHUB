@@ -1,5 +1,6 @@
 import { LockOutlined } from '@ant-design/icons';
-import { App, Button, ColorPicker, Input, Popconfirm, Space, Table, Tag } from 'antd';
+import { App, Button, ColorPicker, Input, Popconfirm, Space, Tag } from 'antd';
+import { ListTable } from '../../components/ListTable';
 import { useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { useParams } from 'react-router-dom';
@@ -22,7 +23,7 @@ export function LabelSettings() {
         <ColorPicker value={color} onChange={(c) => setColor(c.toHexString())} />
         <Button type="primary" disabled={!name.trim()} onClick={async () => { try { await createLabel(projectKey, { name, color }); setName(''); await refresh(); } catch (e) { message.error(errorMessage(e)); } }}>Thêm label</Button>
       </Space>
-      <Table rowKey="id" loading={isLoading} dataSource={data} pagination={false} style={{ background: '#fff' }} columns={[
+      <ListTable rowKey="id" loading={isLoading} dataSource={data} resetKey={projectKey} style={{ background: '#fff' }} columns={[
         { title: 'Label', render: (_, l) => <Tag color={l.color}>{l.name}</Tag> },
         { title: 'Tên', dataIndex: 'name', render: (n, l) => l.isSystem ? <span><LockOutlined /> {n} <span className="muted">(hệ thống, bị khóa)</span></span> : <Input.Search size="small" defaultValue={n} enterButton="Lưu" style={{ width: 240 }} onSearch={async (v) => { try { await updateLabel(projectKey, String(l.id), { name: v }); await refresh(); } catch (e) { message.error(errorMessage(e)); } }} /> },
         { title: 'Màu', dataIndex: 'color', render: (c, l) => <ColorPicker size="small" value={c} disabled={l.isSystem} onChangeComplete={async (v) => { try { await updateLabel(projectKey, String(l.id), { color: v.toHexString() }); await refresh(); } catch (e) { message.error(errorMessage(e)); } }} /> },

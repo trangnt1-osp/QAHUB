@@ -1,5 +1,7 @@
 import { LinkOutlined } from '@ant-design/icons';
-import { Card, DatePicker, Input, Select, Space, Table, Tag, Tooltip, Typography } from 'antd';
+import { Card, DatePicker, Input, Select, Space, Tag, Tooltip, Typography } from 'antd';
+import { ListTable } from '../../components/ListTable';
+import { useCursorPagination } from '../../lib/useCursorPagination';
 import { useQuery } from '@tanstack/react-query';
 import dayjs from 'dayjs';
 import { useMemo, useState } from 'react';
@@ -26,9 +28,12 @@ export function ReportsPage() {
   const [environment, setEnvironment] = useState<string>();
   const [range, setRange] = useState<[dayjs.Dayjs, dayjs.Dayjs] | null>(null);
   const nav = useNavigate();
-  const params = { branch, environment, from: range?.[0]?.startOf('day').toISOString(), to: range?.[1]?.endOf('day').toISOString(), limit: 100 };
-  const { data, isLoading, error, refetch } = useQuery<any>({ queryKey: ['runs', projectKey, params], queryFn: () => listAutomationRuns(projectKey!, params as any), enabled: !!projectKey });
-  const chart = useMemo(() => (data?.items ?? []).slice(0, 20).reverse().map((r: any) => ({ name: `#${r.id}`, passRate: r.passRate ?? 0 })), [data]);
+  const filters = { branch, environment, from: range?.[0]?.startOf('day').toISOString(), to: range?.[1]?.endOf('day').toISOString() };
+  const paging = useCursorPagination(JSON.stringify([projectKey, filters]));
+  const params = { ...filters, limit: paging.pageSize, cursor: paging.cursor };
+  const { data, isLoading, isFetching, error, refetch } = useQuery<any>({ queryKey: ['runs', projectKey, params], queryFn: () => listAutomationRuns(projectKey!, params as any), enabled: !!projectKey });
+  const chartData = useQuery<any>({ queryKey: ['run-chart', projectKey, filters], queryFn: () => listAutomationRuns(projectKey!, { ...filters, limit: 20 } as any), enabled: !!projectKey });
+  const chart = useMemo(() => (chartData.data?.items ?? []).slice(0, 20).reverse().map((r: any) => ({ name: `#${r.id}`, passRate: r.passRate ?? 0 })), [chartData.data]);
   return (
     <div className="page">
       <Typography.Title level={3} style={{ marginTop: 0 }}>Report</Typography.Title>
@@ -38,7 +43,7 @@ export function ReportsPage() {
         <Input allowClear placeholder="Môi trường" style={{ width: 150 }} onChange={(e) => setEnvironment(e.target.value || undefined)} />
         <DatePicker.RangePicker format="DD/MM/YYYY" onChange={(v) => setRange(v as any)} />
       </Space>
-      <QueryBoundary isLoading={isLoading} error={error} refetch={refetch} empty={!!data && !data.items.length} emptyTitle="Chưa có lần chạy nào được gửi lên">
+      <QueryBoundary isLoading={isLoading} error={error} refetch={refetch}>
         {data && (
           <>
             <Card size="small" title="Tỉ lệ pass — 20 lần chạy gần nhất" style={{ marginBottom: 12 }}>
@@ -48,7 +53,10 @@ export function ReportsPage() {
                 </ResponsiveContainer>
               </div>
             </Card>
-            <Table rowKey="id" size="middle" pagination={false} dataSource={data.items} style={{ background: '#fff' }}
+            <ListTable rowKey="id" size="middle" dataSource={data.items} style={{ background: '#fff' }}
+              locale={{ emptyText: 'Chưa có lần chạy nào được gửi lên' }}
+              cursorPage={{ current: paging.current, pageSize: paging.pageSize, hasNext: !!data.nextCursor, pending: isFetching,
+                onPrevious: paging.previous, onNext: () => paging.next(data.nextCursor), onPageSizeChange: paging.setPageSize }}
               onRow={(r: any) => ({ onClick: () => nav(`/reports/runs/${r.id}`), style: { cursor: 'pointer' } })}
               columns={[
                 { title: 'Thời gian', dataIndex: 'createdAt', width: 150, render: fmtDateTime },

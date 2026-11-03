@@ -1,5 +1,7 @@
-import { PlusOutlined } from '@ant-design/icons';
-import { App, Button, Card, DatePicker, Form, Modal, Select, Space, Table, Tag } from 'antd';
+import { LogoutOutlined, PlusOutlined } from '@ant-design/icons';
+import { ActionIconButton } from '../../components/ActionIconButton';
+import { App, Button, Card, DatePicker, Form, Modal, Select, Space, Tag } from 'antd';
+import { ListTable } from '../../components/ListTable';
 import { useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -76,7 +78,7 @@ export function ProjectMembers({ projectKey, canManage }: { projectKey: string; 
       <Form.Item><Button type="primary" htmlType="submit" icon={<PlusOutlined />} loading={saving}>Thêm thành viên</Button></Form.Item>
     </Form>}
     <QueryBoundary isLoading={isLoading} error={error} refetch={refetch}>
-      <Table<MemberRow> rowKey="id" dataSource={data} pagination={false} scroll={{ x: 900 }} columns={[
+      <ListTable<MemberRow> rowKey="id" dataSource={data} scroll={{ x: 964 }} resetKey={projectKey} columns={[
         { title: 'Thành viên', render: (_, m) => <UserAvatar user={m.user} showName /> },
         { title: 'Email', render: (_, m) => m.user.email },
         { title: 'Vai trò', render: (_, m) => canManage && !m.leftAt ? <Select size="small" style={{ width: 130 }} value={m.role}
@@ -91,8 +93,8 @@ export function ProjectMembers({ projectKey, canManage }: { projectKey: string; 
         { title: 'Ngày tham gia dự án', dataIndex: 'joinedAt', render: fmtDate },
         { title: 'Ngày rời dự án', dataIndex: 'leftAt', render: fmtDate },
         { title: 'Trạng thái', render: (_, m) => <Tag color={m.leftAt ? 'default' : 'green'}>{m.leftAt ? 'Đã rời' : 'Đang tham gia'}</Tag> },
-        ...(canManage ? [{ title: 'Thao tác', render: (_: unknown, m: MemberRow) => !m.leftAt ? <Button type="link" danger disabled={saving || changing !== null}
-          onClick={() => { setLeaving(m); setLeftDate(today); }}>Rời dự án</Button> : null }] : []),
+        ...(canManage ? [{ title: 'Thao tác', render: (_: unknown, m: MemberRow) => !m.leftAt ? <ActionIconButton label="Rời dự án" icon={<LogoutOutlined />} danger disabled={saving || changing !== null}
+          onClick={() => { setLeaving(m); setLeftDate(today); }} /> : null }] : []),
       ]} />
     </QueryBoundary>
     <Modal title="Ghi nhận rời dự án" open={!!leaving} onCancel={() => { if (!saving) setLeaving(null); }} onOk={leave}

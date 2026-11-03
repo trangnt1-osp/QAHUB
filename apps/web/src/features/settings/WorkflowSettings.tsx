@@ -2,7 +2,9 @@ import { DeleteOutlined, HolderOutlined, PlusOutlined } from '@ant-design/icons'
 import { DndContext, DragEndEvent, PointerSensor, closestCenter, useSensor, useSensors } from '@dnd-kit/core';
 import { SortableContext, arrayMove, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { Alert, App, Button, Card, Checkbox, ColorPicker, Input, Modal, Select, Space, Switch, Table, Tooltip, Typography } from 'antd';
+import { Alert, App, Button, Card, Checkbox, ColorPicker, Input, List, Modal, Select, Space, Switch, Tooltip, Typography } from 'antd';
+import { ListTable } from '../../components/ListTable';
+import { NumberedList } from '../../components/NumberedList';
 import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
@@ -25,11 +27,12 @@ interface State {
 const CATEGORY_LABEL: Record<string, string> = { triage: 'triage (chờ duyệt)', todo: 'todo', in_progress: 'in_progress', done: 'done' };
 let tmp = 0;
 
-function SortableRow({ row, onChange, onArchive }: { row: Row; onChange: (r: Row) => void; onArchive: () => void }) {
+function SortableRow({ row, serial, onChange, onArchive }: { row: Row; serial: number; onChange: (r: Row) => void; onArchive: () => void }) {
   const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: row.ref });
   const triage = row.category === 'triage';
   return (
-    <div ref={setNodeRef} style={{ transform: CSS.Transform.toString(transform), transition, display: 'grid', gridTemplateColumns: '24px 1fr 190px 48px 150px 40px', gap: 8, alignItems: 'center', padding: '6px 0', background: '#fff' }}>
+    <div ref={setNodeRef} style={{ transform: CSS.Transform.toString(transform), transition, display: 'grid', width: '100%', gridTemplateColumns: '44px 24px 1fr 190px 48px 150px 40px', gap: 8, alignItems: 'center', padding: '6px 0', background: '#fff' }}>
+      <span aria-label="STT" className="muted">{serial}</span>
       <span {...attributes} {...listeners} style={{ cursor: 'grab', color: '#bfbfbf' }}><HolderOutlined /></span>
       <Input value={row.name} onChange={(e) => onChange({ ...row, name: e.target.value })} />
       <Select value={row.category} onChange={(c) => onChange({ ...row, category: c, showOnBoard: c === 'triage' ? false : row.showOnBoard })} options={STATUS_CATEGORIES.map((c) => ({ value: c, label: CATEGORY_LABEL[c] }))} />
@@ -131,10 +134,10 @@ export function WorkflowSettings() {
           patch({ rows: arrayMove(st.rows, st.rows.findIndex((r) => r.ref === e.active.id), st.rows.findIndex((r) => r.ref === e.over!.id)) });
         }}>
           <SortableContext items={st.rows.map((r) => r.ref)} strategy={verticalListSortingStrategy}>
-            {st.rows.map((r) => (
-              <SortableRow key={r.ref} row={r} onChange={(n) => patch({ rows: st.rows.map((x) => (x.ref === r.ref ? n : x)) })}
-                onArchive={() => patch({ rows: st.rows.filter((x) => x.ref !== r.ref), pairs: new Set([...st.pairs].filter((p) => !p.split('->').includes(r.ref))) })} />
-            ))}
+            <NumberedList<Row> split={false} rowKey="ref" dataSource={st.rows} resetKey={projectKey} renderItem={(r, index) => (
+              <List.Item style={{ padding: 0 }}><SortableRow row={r} serial={index + 1} onChange={(n) => patch({ rows: st.rows.map((x) => (x.ref === r.ref ? n : x)) })}
+                onArchive={() => patch({ rows: st.rows.filter((x) => x.ref !== r.ref), pairs: new Set([...st.pairs].filter((p) => !p.split('->').includes(r.ref))) })} /></List.Item>
+            )} />
           </SortableContext>
         </DndContext>
         <Button icon={<PlusOutlined />} style={{ marginTop: 8 }} onClick={() => patch({ rows: [...st.rows, { ref: `new-${++tmp}`, name: '', category: 'in_progress', color: '#f51d53', showOnBoard: true, issueCount: 0 }] })}>Thêm trạng thái</Button>
@@ -142,7 +145,7 @@ export function WorkflowSettings() {
       </Card>
 
       <Card title="Ma trận chuyển trạng thái" extra={<Space><Switch checked={st.allowAny} onChange={(v) => patch({ allowAny: v })} /> Cho phép chuyển tự do</Space>}>
-        <Table size="small" pagination={false} rowKey="ref" scroll={{ x: true }} dataSource={[{ ref: '*', name: 'Từ mọi trạng thái' } as any, ...st.rows]}
+        <ListTable size="small" rowKey="ref" scroll={{ x: true }} resetKey={projectKey} dataSource={[{ ref: '*', name: 'Từ mọi trạng thái' } as any, ...st.rows]}
           columns={[
             { title: 'Từ \\ Đến', dataIndex: 'name', fixed: 'left', width: 170, render: (n, r: any) => (r.ref === '*' ? <i>{n}</i> : n || '(chưa đặt tên)') },
             ...st.rows.map((to) => ({

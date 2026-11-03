@@ -1,4 +1,6 @@
-import { Alert, Button, Card, Descriptions, Drawer, Input, Select, Space, Statistic, Table, Tag, Typography, App } from 'antd';
+import { Alert, Button, Card, Descriptions, Drawer, Input, Select, Space, Statistic, Tag, Typography, App } from 'antd';
+import { ListTable } from '../../components/ListTable';
+import { useCursorPagination } from '../../lib/useCursorPagination';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
@@ -18,7 +20,8 @@ export function RunDetailPage() {
   const [q, setQ] = useState('');
   const [openId, setOpenId] = useState<number | null>(null);
   const run = useQuery<any>({ queryKey: ['run', runId], queryFn: () => getAutomationRun(runId), refetchInterval: (query) => (['receiving', 'processing'].includes((query.state.data as any)?.status) ? 3000 : false) });
-  const results = useQuery<any>({ queryKey: ['run-results', runId, status, q], queryFn: () => listAutomationResults(runId, { status, q: q || undefined, limit: 200 } as any) });
+  const paging = useCursorPagination(JSON.stringify([runId, status, q]));
+  const results = useQuery<any>({ queryKey: ['run-results', runId, status, q, paging.cursor, paging.pageSize], queryFn: () => listAutomationResults(runId, { status, q: q || undefined, limit: paging.pageSize, cursor: paging.cursor } as any) });
   const r = run.data;
   return (
     <div className="page">
@@ -49,8 +52,11 @@ export function RunDetailPage() {
         <Select allowClear placeholder="Lọc trạng thái" style={{ width: 160 }} value={status} onChange={setStatus} options={['passed', 'failed', 'timedOut', 'interrupted', 'skipped', 'flaky'].map((s) => ({ value: s, label: s }))} />
         <Input.Search allowClear placeholder="Tìm file, tên test, lỗi" style={{ width: 280 }} onSearch={setQ} />
       </Space>
-      <QueryBoundary isLoading={results.isLoading} error={results.error} refetch={results.refetch} empty={!results.data?.items.length} emptyTitle="Không có kết quả">
-        <Table rowKey="id" size="small" pagination={false} dataSource={results.data?.items} style={{ background: '#fff' }}
+      <QueryBoundary isLoading={results.isLoading} error={results.error} refetch={results.refetch}>
+        <ListTable rowKey="id" size="small" dataSource={results.data?.items} style={{ background: '#fff' }}
+          locale={{ emptyText: 'Không có kết quả' }}
+          cursorPage={{ current: paging.current, pageSize: paging.pageSize, hasNext: !!results.data?.nextCursor, pending: results.isFetching,
+            onPrevious: paging.previous, onNext: () => paging.next(results.data?.nextCursor), onPageSizeChange: paging.setPageSize }}
           onRow={(rec: any) => ({ onClick: () => setOpenId(rec.id), style: { cursor: 'pointer' } })}
           columns={[
             { title: 'Test', dataIndex: 'titlePath', ellipsis: true, render: (t: string[]) => t.join(' › ') },

@@ -1,5 +1,6 @@
 import { CopyOutlined, PlusOutlined } from '@ant-design/icons';
-import { Alert, App, Button, Checkbox, Form, Input, Modal, Popconfirm, Radio, Select, Space, Table, Tag, Typography } from 'antd';
+import { Alert, App, Button, Checkbox, Form, Input, Modal, Popconfirm, Radio, Select, Space, Tag, Typography } from 'antd';
+import { ListTable } from '../../components/ListTable';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
 import { useState } from 'react';
@@ -34,7 +35,7 @@ export function ApiKeysPage() {
       </Space>
       <Alert type="info" showIcon style={{ marginBottom: 12 }} message="Mỗi key gắn với một dự án, có scope và hạn dùng. Repo Playwright đặt key vào biến môi trường APP_API_KEY trong CI." />
       <QueryBoundary isLoading={isLoading} error={error} refetch={refetch} empty={!data.length} emptyTitle="Chưa có API key nào">
-        <Table rowKey="id" dataSource={data} pagination={false} style={{ background: '#fff' }} columns={[
+        <ListTable rowKey="id" dataSource={data} resetKey={projectKey} style={{ background: '#fff' }} columns={[
           { title: 'Tên', dataIndex: 'name' },
           { title: 'Prefix', dataIndex: 'prefix', render: (p) => <code>{p}…</code> },
           { title: 'Scope', dataIndex: 'scopes', render: (s: string[]) => s.map((x) => <Tag key={x}>{x}</Tag>) },

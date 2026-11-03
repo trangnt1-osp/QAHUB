@@ -1,4 +1,6 @@
-import { Badge, Card, Col, List, Progress, Row, Space, Statistic, Table, Tag, Typography } from 'antd';
+import { Badge, Card, Col, List, Progress, Row, Space, Statistic, Tag, Typography } from 'antd';
+import { ListTable } from '../../components/ListTable';
+import { NumberedList } from '../../components/NumberedList';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useNavigate } from 'react-router-dom';
 import { getDashboard } from '../../api/generated/api';
@@ -29,7 +31,7 @@ export function DashboardPage() {
 
             {data.canTriage && (
               <Card style={{ marginTop: 16 }} title={<Space>Bug auto chờ duyệt <Badge count={data.pendingReview.length} color="#722ed1" showZero /></Space>}>
-                <Table size="small" rowKey="id" pagination={false} dataSource={data.pendingReview} locale={{ emptyText: 'Không có bug nào chờ duyệt 🎉' }}
+                <ListTable size="small" rowKey="id" dataSource={data.pendingReview} locale={{ emptyText: 'Không có bug nào chờ duyệt 🎉' }}
                   onRow={(r: any) => ({ onClick: () => select(r.key), style: { cursor: 'pointer' } })}
                   columns={[
                     { title: 'Mã', dataIndex: 'key', width: 110, render: (k) => <b>{k}</b> },
@@ -49,9 +51,9 @@ export function DashboardPage() {
                   {data.myWork.map((g: any) => (
                     <div key={g.projectKey} style={{ marginBottom: 12 }}>
                       <Link to={`/projects/${g.projectKey}/backlog`}><b>{g.projectKey}</b> · {g.projectName}</Link>
-                      <List size="small" dataSource={g.issues} renderItem={(i: any) => (
+                      <NumberedList rowKey="id" size="small" dataSource={g.issues} renderItem={(i: any, index) => (
                         <List.Item onClick={() => select(i.key)} style={{ cursor: 'pointer' }}>
-                          <Space><IssueTypeIcon type={i.type} /><span className="muted">{i.key}</span><span>{i.title}</span></Space>
+                          <Space><span aria-label="STT" className="muted">{index + 1}.</span><IssueTypeIcon type={i.type} /><span className="muted">{i.key}</span><span>{i.title}</span></Space>
                           <Space><PriorityIcon priority={i.priority} /><StatusTag status={i.status} /></Space>
                         </List.Item>
                       )} />
@@ -61,9 +63,9 @@ export function DashboardPage() {
               </Col>
               <Col xs={24} lg={12}>
                 <Card title="Lần chạy gần đây" style={{ marginBottom: 16 }}>
-                  <List size="small" locale={{ emptyText: 'Chưa có lần chạy nào' }} dataSource={data.recentRuns} renderItem={(r: any) => (
+                  <NumberedList rowKey="id" size="small" locale={{ emptyText: 'Chưa có lần chạy nào' }} dataSource={data.recentRuns} renderItem={(r: any, index) => (
                     <List.Item onClick={() => nav(`/reports/runs/${r.id}`)} style={{ cursor: 'pointer' }}>
-                      <Space><Tag>{r.projectKey}</Tag><span>#{r.id} {r.name ?? ''}</span><span className="muted">{r.environment}</span></Space>
+                      <Space><span aria-label="STT" className="muted">{index + 1}.</span><Tag>{r.projectKey}</Tag><span>#{r.id} {r.name ?? ''}</span><span className="muted">{r.environment}</span></Space>
                       <Space><Progress percent={r.passRate ?? 0} size="small" style={{ width: 90 }} status={r.failed ? 'exception' : 'success'} /> {r.bugsCreated > 0 && <Tag color="purple">+{r.bugsCreated} bug</Tag>}</Space>
                     </List.Item>
                   )} />

@@ -7,7 +7,7 @@ import {
 import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { App, Badge, Button, Checkbox, Dropdown, Input, Popconfirm, Select, Space, Tag, Typography } from 'antd';
+import { App, Badge, Button, Checkbox, Dropdown, Input, Pagination, Popconfirm, Select, Space, Tag, Typography } from 'antd';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
@@ -34,10 +34,11 @@ interface Layout { sprints: SprintBlock[]; backlog: IssueRow[]; backlogTotal: nu
 
 type Row =
   | { kind: 'sprint'; id: string; block: SprintBlock }
-  | { kind: 'issue'; id: string; issue: IssueRow; container: string }
+  | { kind: 'issue'; id: string; issue: IssueRow; container: string; ordinal: number }
   | { kind: 'create'; id: string; container: string }
   | { kind: 'empty'; id: string; container: string }
-  | { kind: 'backlog'; id: string };
+  | { kind: 'backlog'; id: string }
+  | { kind: 'pagination'; id: string; container: string; total: number };
 
 const BACKLOG = 'backlog';
 const FILTER_KEYS = ['q', 'assigneeIds', 'epicId', 'type', 'labelIds', 'source', 'statusIds'] as const;
@@ -71,21 +72,65 @@ export default function BacklogPage() {
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [loadingMore, setLoadingMore] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [pages, setPages] = useState<Record<string, { current: number; pageSize: number }>>({});
+  const scope = JSON.stringify([projectKey, filters]);
+  const scopeRef = useRef(scope);
+  scopeRef.current = scope;
+  const generation = useRef(0);
+  const [layoutGeneration, setLayoutGeneration] = useState(0);
+  const request = useRef<object | null>(null);
+  const pageFor = (container: string, total: number) => {
+    const p = pages[container] ?? { current: 1, pageSize: 10 };
+    return { ...p, current: Math.min(p.current, Math.max(1, Math.ceil(total / p.pageSize))) };
+  };
+  const backlogPage = pageFor(BACKLOG, layout?.backlogTotal ?? 0);
 
   useEffect(() => {
+    setPages({});
+    setLayout(null);
+    setSelected(new Set());
+    setLoadError(null);
+  }, [scope]);
+
+  useEffect(() => {
+    generation.current += 1;
+    setLayoutGeneration(generation.current);
+    request.current = null;
+    setLoadingMore(false);
+    setLoadError(null);
     if (!data) return;
     setLayout({ sprints: data.sprints, backlog: data.backlog.issues, backlogTotal: data.backlog.total, nextCursor: data.backlog.nextCursor });
     setSelected(new Set());
-  }, [data]);
+  }, [data, scope]);
 
   const loadMore = useCallback(async () => {
-    if (!layout?.nextCursor || loadingMore) return;
+    if (!layout?.nextCursor || request.current || layoutGeneration !== generation.current) return;
+    const token = {};
+    const version = generation.current;
+    request.current = token;
     setLoadingMore(true);
     try {
       const r = await listIssues(projectKey, { ...filters, sprintId: 'backlog', cursor: layout.nextCursor, limit: 200 } as any);
-      setLayout((l) => (l ? { ...l, backlog: [...l.backlog, ...r.items], nextCursor: r.nextCursor } : l));
-    } finally { setLoadingMore(false); }
-  }, [layout?.nextCursor, loadingMore, projectKey, filters]);
+      if (scopeRef.current !== scope || generation.current !== version) return;
+      setLayout((l) => {
+        if (!l || scopeRef.current !== scope || generation.current !== version) return l;
+        const ids = new Set(l.backlog.map((i: IssueRow) => i.id));
+        return { ...l, backlog: [...l.backlog, ...r.items.filter((i: IssueRow) => !ids.has(i.id))], nextCursor: r.nextCursor };
+      });
+    } catch (err) {
+      if (scopeRef.current === scope && generation.current === version) setLoadError(errorMessage(err));
+    } finally {
+      if (request.current === token) {
+        request.current = null;
+        setLoadingMore(false);
+      }
+    }
+  }, [layout?.nextCursor, layoutGeneration, projectKey, filters, scope]);
+
+  useEffect(() => {
+    if (layout && !loadError && !collapsed.has(BACKLOG) && layout.backlog.length < Math.min(backlogPage.current * backlogPage.pageSize, layout.backlogTotal)) void loadMore();
+  }, [layout, backlogPage.current, backlogPage.pageSize, collapsed, loadError, loadMore]);
 
   // ---- Danh sách phẳng cho virtualizer: tiêu đề sprint, dòng item, dòng "+ Create", tiêu đề backlog ----
   const rows = useMemo<Row[]>(() => {
@@ -96,31 +141,32 @@ export default function BacklogPage() {
       out.push({ kind: 'sprint', id: `h-${c}`, block: b });
       if (!collapsed.has(c)) {
         if (!b.issues.length) out.push({ kind: 'empty', id: `e-${c}`, container: c });
-        for (const i of b.issues) out.push({ kind: 'issue', id: String(i.id), issue: i, container: c });
+        const page = pageFor(c, b.issues.length);
+        const start = (page.current - 1) * page.pageSize;
+        b.issues.slice(start, start + page.pageSize).forEach((i, index) => out.push({ kind: 'issue', id: String(i.id), issue: i, container: c, ordinal: start + index + 1 }));
+        if (b.issues.length) out.push({ kind: 'pagination', id: `p-${c}`, container: c, total: b.issues.length });
         if (canEdit) out.push({ kind: 'create', id: `c-${c}`, container: c });
       }
     }
     out.push({ kind: 'backlog', id: 'h-backlog' });
     if (!collapsed.has(BACKLOG)) {
       if (!layout.backlog.length) out.push({ kind: 'empty', id: 'e-backlog', container: BACKLOG });
-      for (const i of layout.backlog) out.push({ kind: 'issue', id: String(i.id), issue: i, container: BACKLOG });
+      const page = pageFor(BACKLOG, layout.backlogTotal);
+      const start = (page.current - 1) * page.pageSize;
+      layout.backlog.slice(start, start + page.pageSize).forEach((i, index) => out.push({ kind: 'issue', id: String(i.id), issue: i, container: BACKLOG, ordinal: start + index + 1 }));
+      if (layout.backlogTotal) out.push({ kind: 'pagination', id: 'p-backlog', container: BACKLOG, total: layout.backlogTotal });
       if (canEdit) out.push({ kind: 'create', id: 'c-backlog', container: BACKLOG });
     }
     return out;
-  }, [layout, collapsed, canEdit]);
+  }, [layout, collapsed, canEdit, pages]);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const virtualizer = useVirtualizer({
     count: rows.length, getScrollElement: () => scrollRef.current, overscan: 12,
-    estimateSize: (i) => (rows[i].kind === 'sprint' || rows[i].kind === 'backlog' ? 64 : 42),
+    estimateSize: (i) => (rows[i].kind === 'sprint' || rows[i].kind === 'backlog' || rows[i].kind === 'pagination' ? 64 : 42),
     getItemKey: (i) => rows[i].id,
   });
   const vItems = virtualizer.getVirtualItems();
-  useEffect(() => {
-    const last = vItems[vItems.length - 1];
-    if (last && last.index >= rows.length - 15) void loadMore();
-  }, [vItems, rows.length, loadMore]);
-
   // ---- Kéo thả ----
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
   const [dragging, setDragging] = useState<IssueRow | null>(null);
@@ -165,6 +211,7 @@ export default function BacklogPage() {
       return {
         ...l,
         backlog: toContainer === BACKLOG ? put(l.backlog) : strip(l.backlog),
+        backlogTotal: l.backlogTotal + (from.c !== BACKLOG && toContainer === BACKLOG ? 1 : from.c === BACKLOG && toContainer !== BACKLOG ? -1 : 0),
         sprints: l.sprints.map((b) => ({ ...b, issues: `s${b.sprint.id}` === toContainer ? put(b.issues) : strip(b.issues) })),
       };
     });
@@ -210,10 +257,14 @@ export default function BacklogPage() {
                           onCreateSprint={async () => { try { await createSprint(projectKey, {}); await qc.invalidateQueries(); } catch (e) { message.error(errorMessage(e)); } }} />
                       )}
                       {r.kind === 'issue' && (
-                        <IssueRowView issue={r.issue} canEdit={canEdit} checked={selected.has(r.issue.id)} projectKey={projectKey}
+                        <IssueRowView ordinal={r.ordinal} issue={r.issue} canEdit={canEdit} checked={selected.has(r.issue.id)} projectKey={projectKey}
                           onCheck={(c) => setSelected((s) => { const n = new Set(s); c ? n.add(r.issue.id) : n.delete(r.issue.id); return n; })}
                           onOpen={() => select(r.issue.key)} onStatus={(sid) => changeStatus(r.issue, sid)} />
                       )}
+                      {r.kind === 'pagination' && <div data-testid={`pagination-${r.container}`} style={{ padding: '10px 12px' }}>
+                        <Pagination size="small" current={pageFor(r.container, r.total).current} pageSize={pageFor(r.container, r.total).pageSize} total={r.total} showSizeChanger={{ getPopupContainer: () => document.body }} pageSizeOptions={[10, 20, 50, 100]} showTotal={(total) => `${total} items`} onChange={(current, pageSize) => { setLoadError(null); setPages((p) => ({ ...p, [r.container]: { current: (p[r.container]?.pageSize ?? 10) !== pageSize ? 1 : current, pageSize } })); }} />
+                        {r.container === BACKLOG && loadError && <span role="alert">{loadError} <Button size="small" onClick={() => setLoadError(null)}>Retry</Button></span>}
+                      </div>}
                       {r.kind === 'empty' && <EmptyDrop container={r.container} />}
                       {r.kind === 'create' && <QuickCreate projectKey={projectKey} sprintId={r.container === BACKLOG ? undefined : Number(r.container.slice(1))} onCreated={() => qc.invalidateQueries()} />}
                     </div>
@@ -308,8 +359,8 @@ function EmptyDrop({ container }: { container: string }) {
   return <div ref={setNodeRef} className="muted" style={{ padding: '10px 36px', background: isOver ? '#ffe0e9' : '#fff', border: '1px dashed #d9d9d9', margin: 4 }}>Kéo item vào đây</div>;
 }
 
-const IssueRowView = memo(function IssueRowView({ issue, canEdit, checked, onCheck, onOpen, onStatus, projectKey }: {
-  issue: IssueRow; canEdit: boolean; checked: boolean; onCheck: (c: boolean) => void; onOpen: () => void; onStatus: (id: number) => void; projectKey: string;
+const IssueRowView = memo(function IssueRowView({ ordinal, issue, canEdit, checked, onCheck, onOpen, onStatus, projectKey }: {
+  ordinal: number; issue: IssueRow; canEdit: boolean; checked: boolean; onCheck: (c: boolean) => void; onOpen: () => void; onStatus: (id: number) => void; projectKey: string;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: String(issue.id), disabled: !canEdit });
   const { data: wf } = useWorkflow(projectKey);
@@ -323,6 +374,7 @@ const IssueRowView = memo(function IssueRowView({ issue, canEdit, checked, onChe
       style={{ transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.4 : 1, height: '100%', boxSizing: 'border-box' }}>
       {canEdit && <span {...attributes} {...listeners} onClick={(e) => e.stopPropagation()} style={{ cursor: 'grab', color: '#bfbfbf' }}><HolderOutlined /></span>}
       <span onClick={(e) => e.stopPropagation()}><Checkbox checked={checked} onChange={(e) => onCheck(e.target.checked)} /></span>
+      <span className="muted" aria-label="STT" style={{ minWidth: 36, textAlign: 'right' }}>{ordinal}</span>
       <IssueTypeIcon type={issue.type} />
       <span className="muted" style={{ width: 84 }}>{issue.key}</span>
       <span className="title">{issue.title}</span>

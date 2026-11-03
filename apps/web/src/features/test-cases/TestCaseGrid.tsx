@@ -75,6 +75,8 @@ export const TestCaseGrid = forwardRef<GridHandle, Props>(function TestCaseGrid(
   const catNames = useMemo(() => categories.map((c) => c.name), [categories]);
 
   const columnDefs = useMemo<ColDef<TestCaseRow>[]>(() => [
+    { colId: 'stt', headerName: 'STT', pinned: 'left', width: 80, sortable: false, editable: false,
+      valueGetter: (p: any) => p.node?.rowIndex == null ? '' : p.node.rowIndex + 1 },
     { colId: 'code', field: 'code', headerName: 'Checklist ID', pinned: 'left', width: 200, cellStyle: { fontWeight: 700 }, sortable: true,
       cellRenderer: (p: ICellRendererParams) => <a onClick={() => onOpen(p.data.id)}>{p.value}</a> },
     { colId: 'priority', field: 'priority', headerName: 'Priority', width: 120, sortable: true, editable: canEdit, cellRenderer: PriorityCell, cellEditor: 'agSelectCellEditor', cellEditorParams: { values: [...TEST_CASE_PRIORITIES] } },
@@ -87,7 +89,7 @@ export const TestCaseGrid = forwardRef<GridHandle, Props>(function TestCaseGrid(
     { colId: 'bugs', headerName: 'Link Bug', width: 170, cellRenderer: BugCell },
     { colId: 'notes', field: 'notes', headerName: 'Notes', width: 220, editable: canEdit, tooltipField: 'notes' },
     { colId: 'updatedAt', headerName: 'Cập nhật', width: 200, sortable: true, valueGetter: (p: any) => (p.data ? `${fmtDateTime(p.data.updatedAt)}${p.data.updatedBy ? ` · ${p.data.updatedBy.displayName}` : ''}` : '') },
-  ].map((c) => ({ ...c, hide: hiddenCols.includes(c.colId!), sortable: clientSide ? true : c.sortable ?? false })) as ColDef<TestCaseRow>[], [catNames, categories, canEdit, hiddenCols, clientSide, onOpen]);
+  ].map((c) => ({ ...c, hide: hiddenCols.includes(c.colId!), sortable: clientSide ? c.sortable ?? true : c.sortable ?? false })) as ColDef<TestCaseRow>[], [catNames, categories, canEdit, hiddenCols, clientSide, onOpen]);
 
   // ---- Client-Side: tải nối tiếp tới hết ----
   const loadAll = useCallback(async (api: GridApi) => {
@@ -112,12 +114,18 @@ export const TestCaseGrid = forwardRef<GridHandle, Props>(function TestCaseGrid(
   // ---- Infinite: server filter + sort, cursor theo khối ----
   const makeDatasource = useCallback((): IDatasource => {
     const cursorAt = new Map<number, string | undefined>([[0, undefined]]);
+    let currentSort: string | undefined;
     return {
       async getRows(params) {
         try {
           const sort = params.sortModel[0];
           const sortParam = sort && SORT_FIELD[sort.colId] ? `${SORT_FIELD[sort.colId]}${sort.sort === 'desc' ? ':desc' : ''}` : undefined;
-          let offset = Math.max(...cursorAt.keys());
+          if (sortParam !== currentSort) {
+            cursorAt.clear();
+            cursorAt.set(0, undefined);
+            currentSort = sortParam;
+          }
+          let offset = Math.max(...[...cursorAt.keys()].filter((row) => row <= params.startRow));
           // Cần cursor của khối này; nếu chưa có thì tải nối tiếp từ khối gần nhất đã biết
           while (!cursorAt.has(params.startRow)) {
             const f = filtersRef.current;
@@ -140,6 +148,7 @@ export const TestCaseGrid = forwardRef<GridHandle, Props>(function TestCaseGrid(
   const reload = useCallback(async () => {
     const api = apiRef.current;
     if (!api) return;
+    api.paginationGoToFirstPage();
     if (clientSide) {
       matchIds.current = null;
       const f = filtersRef.current;
@@ -153,7 +162,7 @@ export const TestCaseGrid = forwardRef<GridHandle, Props>(function TestCaseGrid(
   }, [clientSide, loadAll, makeDatasource, projectKey]);
 
   const filterKey = JSON.stringify(filters);
-  useEffect(() => { void reload(); }, [filterKey, reloadToken, clientSide]);
+  useEffect(() => { void reload(); }, [projectKey, filterKey, reloadToken, clientSide]);
 
   // Bộ lọc ngoài cho chế độ client (status/category/priority/q)
   const isExternalFilterPresent = useCallback(() => clientSide && !!(filters.status?.length || filters.categoryId?.length || filters.priority?.length || filters.q), [clientSide, filters]);
@@ -198,6 +207,9 @@ export const TestCaseGrid = forwardRef<GridHandle, Props>(function TestCaseGrid(
         columnDefs={columnDefs}
         defaultColDef={{ resizable: true, suppressMovable: false }}
         rowModelType={clientSide ? 'clientSide' : 'infinite'}
+        pagination
+        paginationPageSize={10}
+        paginationPageSizeSelector={[10, 20, 50, 100]}
         cacheBlockSize={200}
         maxConcurrentDatasourceRequests={1}
         infiniteInitialRowCount={200}
@@ -209,6 +221,7 @@ export const TestCaseGrid = forwardRef<GridHandle, Props>(function TestCaseGrid(
         asyncTransactionWaitMillis={50}
         rowSelection={{ mode: 'multiRow', checkboxes: true, headerCheckbox: clientSide, enableClickSelection: false }}
         onSelectionChanged={(e) => onSelection(e.api.getSelectedRows().map((r) => r.id))}
+        onModelUpdated={(e) => e.api.refreshCells({ columns: ['stt'], force: true })}
         onGridReady={(e: GridReadyEvent) => { apiRef.current = e.api; void reload(); }}
         onCellValueChanged={onCellValueChanged}
         onCellDoubleClicked={(e) => { if (['preconditions', 'stepCount', 'bugs'].includes(e.column.getColId()) && e.data) onOpen(e.data.id); }}

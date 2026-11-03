@@ -15,6 +15,10 @@ export class UsersController {
     return this.users.list(q);
   }
 
+  @SystemRole('admin') @Get(':id') getUserDetail(@Param('id') id: string) {
+    return this.users.detail(parseId(id, 'USER_NOT_FOUND'));
+  }
+
   @SystemRole('admin') @Post() createUser(@Body() dto: CreateUserDto) {
     return this.users.create(dto);
   }

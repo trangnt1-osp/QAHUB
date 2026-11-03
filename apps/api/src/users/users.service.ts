@@ -33,6 +33,24 @@ export class UsersService {
     return publicUser(u);
   }
 
+  async detail(id: bigint) {
+    const user = await this.prisma.user.findUnique({
+      where: { id },
+      select: {
+        id: true, email: true, displayName: true, avatarUrl: true, systemRole: true, isActive: true, lastLoginAt: true,
+        memberships: {
+          orderBy: [{ joinedAt: 'desc' }, { id: 'desc' }],
+          select: {
+            id: true, role: true, joinedAt: true, leftAt: true,
+            project: { select: { id: true, key: true, name: true, deletedAt: true } },
+          },
+        },
+      },
+    });
+    if (!user) throw notFound(ERROR_CODES.USER_NOT_FOUND, 'Không tìm thấy người dùng');
+    return { user: publicUser(user), projects: user.memberships };
+  }
+
   async update(id: bigint, dto: UpdateUserDto, actorId: bigint) {
     const existing = await this.prisma.user.findUnique({ where: { id } });
     if (!existing) throw notFound(ERROR_CODES.USER_NOT_FOUND, 'Không tìm thấy người dùng');

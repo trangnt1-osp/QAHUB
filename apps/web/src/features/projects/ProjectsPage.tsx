@@ -1,5 +1,7 @@
-import { PlusOutlined } from '@ant-design/icons';
-import { App, Badge, Button, Form, Input, Modal, Select, Table, Tag } from 'antd';
+import { EditOutlined, PlusOutlined } from '@ant-design/icons';
+import { ActionIconButton } from '../../components/ActionIconButton';
+import { App, Badge, Button, Form, Input, Modal, Select, Tag } from 'antd';
+import { ListTable } from '../../components/ListTable';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
@@ -28,7 +30,7 @@ export function ProjectsPage() {
         {isAdmin && <Button type="primary" icon={<PlusOutlined />} onClick={() => setOpen(true)}>Tạo dự án</Button>}
       </div>
       <QueryBoundary isLoading={isLoading} error={error} refetch={refetch} empty={!data.length} emptyTitle="Bạn chưa tham gia dự án nào">
-        <Table<ProjectRow> rowKey="id" dataSource={data} pagination={false} size="middle" style={{ background: '#fff' }}
+        <ListTable<ProjectRow> rowKey="id" dataSource={data} size="middle" style={{ background: '#fff' }}
           onRow={(r) => ({ onClick: () => nav(`/projects/${r.key}/summary`), style: { cursor: 'pointer' } })}
           columns={[
             { title: 'Key', dataIndex: 'key', width: 90, render: (k) => <Link to={`/projects/${k}/summary`} onClick={(e) => e.stopPropagation()}><b>{k}</b></Link> },
@@ -41,7 +43,7 @@ export function ProjectsPage() {
             { title: 'Sprint đang chạy', dataIndex: 'activeSprint', render: (s) => (s ? <Tag color="blue">{s.name}</Tag> : <span className="muted">—</span>) },
             { title: 'Ngày tạo', dataIndex: 'createdAt', render: fmtDate },
             { title: 'Thao tác', render: (_, project) => project.myRole === 'admin' ? (
-              <Button type="link" size="small" onClick={(e) => { e.stopPropagation(); setEditing(project); }}>Sửa</Button>
+              <ActionIconButton label="Sửa" icon={<EditOutlined />} onClick={() => setEditing(project)} />
             ) : null },
           ]} />
       </QueryBoundary>

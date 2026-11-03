@@ -7,6 +7,7 @@ import { createTestCategory, deleteTestCategory, getProject, updateProject, upda
 import { errorMessage } from '../../api/http';
 import { useTestCategories } from '../../api/hooks';
 import { UserSelect } from '../../components/UserSelect';
+import { NumberedList } from '../../components/NumberedList';
 import { ProjectDateFields, projectDateInitialValues, projectDatePayload } from '../projects/ProjectDateFields';
 
 export function GeneralSettings() {
@@ -42,13 +43,13 @@ export function GeneralSettings() {
         </Space>
       </Card>
       <Card title="Category test case">
-        <List size="small" dataSource={cats} renderItem={(c, i) => (
+        <NumberedList rowKey="id" size="small" dataSource={cats} resetKey={projectKey} renderItem={(c, i) => (
           <List.Item actions={[
             <Button key="u" size="small" icon={<ArrowUpOutlined />} disabled={i === 0} onClick={() => move(i, -1)} />,
             <Button key="d" size="small" icon={<ArrowDownOutlined />} disabled={i === cats.length - 1} onClick={() => move(i, 1)} />,
             <Popconfirm key="x" title="Xóa category? Test case sẽ về chưa phân loại." okButtonProps={{ danger: true }} onConfirm={async () => { await deleteTestCategory(projectKey, String(c.id)); await refreshCats(); }}><a style={{ color: '#f5222d' }}>Xóa</a></Popconfirm>,
           ]}>
-            <Input.Search size="small" defaultValue={c.name} enterButton="Lưu" style={{ width: 260 }} onSearch={async (v) => { try { await updateTestCategory(projectKey, String(c.id), { name: v }); await refreshCats(); } catch (e) { message.error(errorMessage(e)); } }} />
+            <Space><span aria-label="STT" className="muted">{i + 1}.</span><Input.Search size="small" defaultValue={c.name} enterButton="Lưu" style={{ width: 260 }} onSearch={async (v) => { try { await updateTestCategory(projectKey, String(c.id), { name: v }); await refreshCats(); } catch (e) { message.error(errorMessage(e)); } }} /></Space>
           </List.Item>
         )} />
         <Space style={{ marginTop: 8 }}>
