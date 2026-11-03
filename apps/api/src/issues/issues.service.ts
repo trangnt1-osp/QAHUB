@@ -37,7 +37,10 @@ export class IssuesService {
       else and.push({ title: { contains: term, mode: 'insensitive' } });
     }
     if (q.type?.length) and.push({ type: { in: q.type } });
+    if (q.priority?.length) and.push({ priority: { in: q.priority } });
     if (q.statusIds?.length) and.push({ statusId: { in: q.statusIds.map((v) => parseId(v)) } });
+    if (q.statusCategory) and.push({ status: { category: q.statusCategory === 'open' ? { not: 'done' } : 'done' } });
+    if (q.createdFrom) and.push({ createdAt: { gte: new Date(`${q.createdFrom}T00:00:00.000Z`) } });
     if (q.assigneeIds?.length) {
       const ids = q.assigneeIds.filter((v) => v !== 'unassigned');
       and.push({ OR: [...(ids.length ? [{ assigneeId: { in: ids.map((v) => parseId(v)) } }] : []), ...(q.assigneeIds.includes('unassigned') ? [{ assigneeId: null }] : [])] });

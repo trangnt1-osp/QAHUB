@@ -106,6 +106,27 @@ describe('Projects, workflow, issues', () => {
     expect(done.body.open).toBe(1);
   });
 
+  it('filters backlog drill-downs by priority, assignment, open status and creation date', async () => {
+    const create = async (title: string, extra: Record<string, unknown> = {}) =>
+      (await ctx.http().post(api('/projects/ELMS/issues')).set(auth(tokens.admin)).send({ type: 'bug', title, ...extra }).expect(201)).body;
+    const developer = await ctx.prisma.user.findUniqueOrThrow({ where: { email: 'dev@x.test' } });
+    const highest = await create('Filter highest open', { priority: 'highest' });
+    const assigned = await create('Filter assigned open', { assigneeId: Number(developer.id) });
+    const closed = await create('Filter closed bug');
+    const old = await create('Filter old bug');
+    await ctx.prisma.issue.update({ where: { id: BigInt(old.id) }, data: { createdAt: new Date('2020-01-01T00:00:00.000Z') } });
+    const workflow = (await ctx.http().get(api('/projects/ELMS/workflow')).set(auth(tokens.admin)).expect(200)).body;
+    const done = workflow.statuses.find((status: any) => status.category === 'done');
+    await ctx.http().post(api(`/issues/${closed.key}/transitions`)).set(auth(tokens.admin)).send({ toStatusId: done.id }).expect(200);
+    const list = async (query: string) => (await ctx.http().get(api(`/projects/ELMS/issues?type=bug&${query}`)).set(auth(tokens.viewer)).expect(200)).body.items;
+
+    expect((await list('priority=highest')).map((item: any) => item.key)).toContain(highest.key);
+    expect((await list('priority=highest')).map((item: any) => item.key)).not.toContain(assigned.key);
+    expect((await list('assigneeIds=unassigned')).map((item: any) => item.key)).not.toContain(assigned.key);
+    expect((await list('statusCategory=open')).map((item: any) => item.key)).not.toContain(closed.key);
+    expect((await list(`createdFrom=${new Date().toISOString().slice(0, 10)}`)).map((item: any) => item.key)).not.toContain(old.key);
+  });
+
   it('workflow save: archive status with items requires replacement; triage cannot be on board', async () => {
     const wf = (await ctx.http().get(api('/projects/ELMS/workflow')).set(auth(tokens.admin)).expect(200)).body;
     const body = (statuses: any[]) => ({

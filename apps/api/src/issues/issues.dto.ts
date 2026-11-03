@@ -8,7 +8,10 @@ const csv = () => Transform(({ value }) => (typeof value === 'string' ? value.sp
 export class ListIssuesQuery extends PaginationQuery {
   @IsOptional() @IsString() q?: string;
   @IsOptional() @csv() @IsArray() type?: string[];
+  @IsOptional() @csv() @IsArray() @IsIn(PRIORITIES as unknown as string[], { each: true }) priority?: Priority[];
   @IsOptional() @csv() @IsArray() statusIds?: string[];
+  @IsOptional() @IsIn(['open', 'done']) statusCategory?: 'open' | 'done';
+  @IsOptional() @Matches(/^\d{4}-\d{2}-\d{2}$/) createdFrom?: string;
   @IsOptional() @csv() @IsArray() assigneeIds?: string[];
   @IsOptional() @csv() @IsArray() labelIds?: string[];
   @IsOptional() @IsString() functionId?: string;

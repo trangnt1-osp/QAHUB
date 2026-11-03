@@ -8,9 +8,10 @@ import {
 import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { App, Badge, Button, Checkbox, Dropdown, Input, Pagination, Popconfirm, Select, Space, Tag, Typography } from 'antd';
+import { App, Badge, Button, Checkbox, DatePicker, Dropdown, Input, Pagination, Popconfirm, Select, Space, Tag, Typography } from 'antd';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import dayjs from 'dayjs';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { ISSUE_TYPES, PRIORITIES } from '@ospm/shared';
 import { bulkUpdateIssues, createIssue, createSprint, deleteSprint, getBacklog, listIssues, listSprints, rankIssue, transitionIssue } from '../../api/generated/api';
@@ -44,7 +45,7 @@ type Row =
   | { kind: 'pagination'; id: string; container: string; total: number };
 
 const BACKLOG = 'backlog';
-const FILTER_KEYS = ['q', 'assigneeIds', 'epicId', 'moduleId', 'functionId', 'sprintId', 'type', 'labelIds', 'source', 'statusIds'] as const;
+const FILTER_KEYS = ['q', 'assigneeIds', 'epicId', 'moduleId', 'functionId', 'sprintId', 'type', 'priority', 'labelIds', 'source', 'statusIds', 'statusCategory', 'createdFrom'] as const;
 
 export default function BacklogPage() {
   const { projectKey = '' } = useParams();
@@ -73,7 +74,7 @@ export default function BacklogPage() {
   // Bộ lọc lưu trên URL (mục 10)
   const filters = useMemo(() => {
     const f: Record<string, any> = {};
-    for (const k of FILTER_KEYS) { const v = sp.get(k); if (v) f[k] = ['assigneeIds', 'type', 'labelIds', 'statusIds'].includes(k) ? v.split(',') : v; }
+    for (const k of FILTER_KEYS) { const v = sp.get(k); if (v) f[k] = ['assigneeIds', 'type', 'priority', 'labelIds', 'statusIds'].includes(k) ? v.split(',') : v; }
     return f;
   }, [sp]);
   const setFilter = (k: string, v: string | string[] | undefined) => setSp((p) => {
@@ -359,10 +360,13 @@ function FilterBar({ projectKey, filters, setFilter, clear, hasFilters, members,
       <Select aria-label={phase ? 'Lọc Phase' : 'Lọc Sprint'} allowClear placeholder={phase ? 'Phase' : 'Sprint'} style={{ width: 160 }} value={filters.sprintId} onChange={(value) => setFilter('sprintId', value)}
         options={[{ value: 'backlog', label: 'Chưa phân bổ' }, ...periods.map((period) => ({ value: String(period.id), label: period.name }))]} />
       <Select mode="multiple" allowClear placeholder="Type" style={{ minWidth: 120 }} maxTagCount="responsive" value={filters.type} onChange={(v) => setFilter('type', v)} options={ISSUE_TYPES.map((t) => ({ value: t, label: ISSUE_TYPE_LABEL[t] }))} />
+      <Select mode="multiple" allowClear placeholder="Priority" style={{ minWidth: 130 }} maxTagCount="responsive" value={filters.priority} onChange={(v) => setFilter('priority', v)} options={PRIORITIES.map((priority) => ({ value: priority, label: priority }))} />
       <LabelSelect projectKey={projectKey} value={(filters.labelIds ?? []).map(Number)} onChange={(ids) => setFilter('labelIds', ids.map(String))} />
       <Select allowClear placeholder="Source" style={{ width: 120 }} value={filters.source} onChange={(v) => setFilter('source', v)} options={[{ value: 'manual', label: 'Manual' }, { value: 'auto', label: 'Auto' }]} />
       <Select mode="multiple" allowClear placeholder="Status" style={{ minWidth: 140 }} maxTagCount="responsive" value={filters.statusIds} onChange={(v) => setFilter('statusIds', v)}
         options={(wf?.statuses ?? []).filter((s) => !s.isArchived).map((s) => ({ value: String(s.id), label: s.name }))} />
+      <Select allowClear placeholder="Nhóm trạng thái" style={{ width: 150 }} value={filters.statusCategory} onChange={(v) => setFilter('statusCategory', v)} options={[{ value: 'open', label: 'Đang mở' }, { value: 'done', label: 'Đã hoàn thành' }]} />
+      <DatePicker allowClear placeholder="Tạo từ ngày" format="DD/MM/YYYY" value={filters.createdFrom ? dayjs(filters.createdFrom) : null} onChange={(value) => setFilter('createdFrom', value?.format('YYYY-MM-DD'))} />
       {hasFilters && <Button type="link" onClick={clear}>Clear filters</Button>}
     </Space>
   );
