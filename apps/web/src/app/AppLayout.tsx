@@ -12,6 +12,7 @@ import { useCreateIssueModal } from '../features/issues/createIssueStore';
 import { IssueDrawerHost } from '../features/issues/IssueDrawerHost';
 import { ChangePasswordModal } from '../features/auth/ChangePasswordModal';
 import { useUi } from '../stores/ui';
+import { useQuickSearch } from '../features/issues/useQuickSearch';
 
 const { Sider, Header, Content } = Layout;
 
@@ -25,6 +26,7 @@ export function AppLayout() {
   const projectKey = loc.pathname.startsWith('/projects/') ? matches.find((match) => match.params.projectKey)?.params.projectKey : undefined;
   const show = useCreateIssueModal((s) => s.show);
   const [pwOpen, setPwOpen] = useState(false);
+  const quickSearch = useQuickSearch();
 
   useEffect(() => {
     const h = () => { useAuth.setState({ user: null, projects: [] }); nav('/login', { state: { from: loc.pathname + loc.search } }); };
@@ -79,7 +81,7 @@ export function AppLayout() {
           </div>
           <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 12 }}>
             <Input.Search placeholder="Tìm nhanh theo mã item (ELMS-2249)" allowClear style={{ width: 'clamp(100px, 25vw, 360px)' }}
-              onSearch={(v) => { const k = v.trim().toUpperCase(); if (/^[A-Z][A-Z0-9]+-\d+$/.test(k)) nav(`/browse/${k}`); }} />
+              value={quickSearch.value} onChange={(e) => quickSearch.onChange(e.target.value)} onSearch={quickSearch.onSearch} />
             <Button type="primary" icon={<PlusOutlined />} onClick={() => show()}>Tạo</Button>
           </div>
         </Header>

@@ -17,7 +17,7 @@ import { errorMessage } from '../../api/http';
 import { useMembers, useSprints, useWorkflow } from '../../api/hooks';
 import type { IssueRow, Sprint } from '../../api/models';
 import { AvatarFilter } from '../../components/AvatarFilter';
-import { ErrorState } from '../../components/EmptyState';
+import { EmptyState, ErrorState } from '../../components/EmptyState';
 import { ISSUE_TYPE_LABEL, IssueTypeIcon } from '../../components/IssueTypeIcon';
 import { LabelSelect } from '../../components/LabelSelect';
 import { PriorityIcon } from '../../components/PriorityIcon';
@@ -236,7 +236,7 @@ export default function BacklogPage() {
     <div className="page" style={{ paddingBottom: 0 }}>
       <FilterBar projectKey={projectKey} filters={filters} setFilter={setFilter} clear={() => setSp({}, { replace: true })} hasFilters={hasFilters} members={members.map((m) => m.user)} />
       {selected.size > 0 && canEdit && <BulkBar projectKey={projectKey} keys={[...selected].map((id) => layout!.sprints.flatMap((b) => b.issues).concat(layout!.backlog).find((i) => i.id === id)?.key).filter(Boolean) as string[]} onDone={() => { setSelected(new Set()); void qc.invalidateQueries(); }} statuses={wf?.statuses.filter((s) => !s.isArchived) ?? []} />}
-      {isLoading || !layout ? <div className="muted" style={{ padding: 32 }}>Đang tải…</div> : (
+      {isLoading || !layout ? <div className="muted" style={{ padding: 32 }}>Đang tải…</div> : hasFilters && !layout.backlogTotal && layout.sprints.every((block) => !block.issues.length) ? <EmptyState title="Không có item phù hợp." /> : (
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={(e: DragStartEvent) => setDragging(rows.find((r) => r.kind === 'issue' && r.id === String(e.active.id)) ? (rows.find((r) => r.id === String(e.active.id)) as any).issue : null)} onDragEnd={onDragEnd} onDragCancel={() => setDragging(null)}>
           <div ref={scrollRef} style={{ height: 'calc(100vh - 290px)', minHeight: 360, overflow: 'auto', background: '#fff', border: '1px solid #f0f0f0', borderRadius: 6 }} data-testid="backlog-scroll">
             <SortableContext items={issueIds} strategy={verticalListSortingStrategy}>

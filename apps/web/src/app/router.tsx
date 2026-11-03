@@ -6,6 +6,7 @@ import LoginPage from '../features/auth/LoginPage';
 import { useAuth } from '../features/auth/authStore';
 import { DashboardPage } from '../features/dashboard/DashboardPage';
 import { IssuePage } from '../features/issues/IssuePage';
+import { IssueSearchPage } from '../features/issues/IssueSearchPage';
 import { MembersPage } from '../features/members/MembersPage';
 import { ProjectsPage } from '../features/projects/ProjectsPage';
 import { ReportsPage } from '../features/reports/ReportsPage';
@@ -46,6 +47,7 @@ export const router = createBrowserRouter([
         ],
       },
       { path: 'browse/:issueKey', element: <IssuePage />, handle: { title: 'Chi tiết công việc' } },
+      { path: 'search', element: <IssueSearchPage />, handle: { title: 'Kết quả tìm kiếm' } },
       { path: 'members', element: <MembersPage />, handle: { title: 'Người dùng' } },
       { path: 'reports', element: <ReportsPage />, handle: { title: 'Report' } },
       { path: 'reports/runs/:runId', element: <RunDetailPage />, handle: { title: 'Chi tiết lần chạy' } },

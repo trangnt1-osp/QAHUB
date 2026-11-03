@@ -3,8 +3,9 @@ import { Tabs } from 'antd';
 import { ComponentType, lazy, Suspense } from 'react';
 import { Outlet, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
+import { isAxiosError } from 'axios';
 import { getProject } from '../api/generated/api';
-import { ErrorState } from '../components/EmptyState';
+import { EmptyState, ErrorState } from '../components/EmptyState';
 import BacklogPage from '../features/backlog/BacklogPage';
 import BoardPage from '../features/board/BoardPage';
 import SummaryPage from '../features/summary/SummaryPage';
@@ -35,7 +36,10 @@ export function ProjectLayout() {
   const loc = useLocation();
   const { error, refetch } = useQuery({ queryKey: ['project', projectKey], queryFn: () => getProject(projectKey!), enabled: !!projectKey });
   const active = projectTabs.find((t) => loc.pathname.includes(`/${t.path}`))?.key ?? 'summary';
-  if (error) return <ErrorState error={error} onRetry={refetch} />;
+  if (error) {
+    if (isAxiosError(error) && error.response?.status === 404 && new URLSearchParams(loc.search).has('q')) return <EmptyState title="Không có item phù hợp." />;
+    return <ErrorState error={error} onRetry={refetch} />;
+  }
   return (
     <div>
       <div style={{ background: '#fff', padding: '12px 24px 0', borderBottom: '1px solid #f0f0f0' }}>
