@@ -1,0 +1,31 @@
+import { expect, test } from '@playwright/test';
+import { login } from './helpers';
+
+test('layout keeps account at sidebar bottom and places title/search on opposite header sides', async ({ page }) => {
+  await login(page, 'admin@local.test', 'Admin@12345');
+  await page.goto('/members');
+  const sidebar = page.getByRole('complementary');
+  const account = sidebar.getByRole('button', { name: /Tài khoản/ });
+  await expect(account).toBeVisible();
+  const title = page.getByTestId('screen-title');
+  await expect(title).toHaveText('Người dùng');
+  await expect(page.getByRole('main').getByRole('heading', { name: 'Người dùng', exact: true })).toHaveCount(0);
+  const search = page.getByPlaceholder('Tìm nhanh theo mã item (ELMS-2249)');
+  const titleBox = await title.boundingBox();
+  const searchBox = await search.boundingBox();
+  expect(titleBox!.x + titleBox!.width).toBeLessThanOrEqual(searchBox!.x);
+  const accountBox = await account.boundingBox();
+  expect(accountBox!.y + accountBox!.height).toBeGreaterThan((page.viewportSize()!.height) - 32);
+  await account.click();
+  await page.getByRole('menuitem', { name: 'Đổi mật khẩu', exact: true }).click();
+  await expect(page.getByRole('dialog', { name: 'Đổi mật khẩu' })).toBeVisible();
+  await page.getByRole('dialog', { name: 'Đổi mật khẩu' }).getByRole('button', { name: 'Hủy', exact: true }).click();
+  await page.getByRole('button', { name: 'Thu gọn menu', exact: true }).click();
+  await expect(account).toBeVisible();
+  await page.getByRole('menuitem', { name: /Dự án/ }).click();
+  await expect(title).toHaveText('Dự án');
+  await expect(page.getByRole('main').getByRole('heading', { name: 'Dự án', exact: true })).toHaveCount(0);
+  await account.click();
+  await page.getByRole('menuitem', { name: /Đăng xuất/ }).click();
+  await expect(page).toHaveURL(/\/login$/);
+});

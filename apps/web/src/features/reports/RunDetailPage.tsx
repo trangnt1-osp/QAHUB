@@ -29,7 +29,7 @@ export function RunDetailPage() {
       <QueryBoundary isLoading={run.isLoading} error={run.error} refetch={run.refetch}>
         {r && (
           <>
-            <Typography.Title level={3} style={{ marginTop: 8 }}>Run #{r.id} {r.name && `— ${r.name}`} <Tag color={RUN_STATUS_COLOR[r.status]}>{r.status}</Tag></Typography.Title>
+            <Space wrap style={{ margin: '8px 0 16px' }}><Typography.Text strong>Run #{r.id} {r.name && `— ${r.name}`}</Typography.Text><Tag color={RUN_STATUS_COLOR[r.status]}>{r.status}</Tag></Space>
             {r.processingError && <Alert type="error" showIcon message={`Xử lý lỗi: ${r.processingError}`} style={{ marginBottom: 12 }} />}
             <Space size={16} wrap style={{ marginBottom: 16 }}>
               {[['Tổng', r.total], ['Passed', r.passed], ['Failed', r.failed], ['Flaky', r.flaky], ['Skipped', r.skipped], ['Bug mới', r.bugsCreated], ['Bug cập nhật', r.bugsUpdated]].map(([t, v]) => (

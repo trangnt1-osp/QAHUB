@@ -1,5 +1,5 @@
 import { LinkOutlined } from '@ant-design/icons';
-import { Card, DatePicker, Input, Select, Space, Tag, Tooltip, Typography } from 'antd';
+import { Card, DatePicker, Input, Select, Space, Tag, Tooltip } from 'antd';
 import { ListTable } from '../../components/ListTable';
 import { useCursorPagination } from '../../lib/useCursorPagination';
 import { useQuery } from '@tanstack/react-query';
@@ -36,7 +36,6 @@ export function ReportsPage() {
   const chart = useMemo(() => (chartData.data?.items ?? []).slice(0, 20).reverse().map((r: any) => ({ name: `#${r.id}`, passRate: r.passRate ?? 0 })), [chartData.data]);
   return (
     <div className="page">
-      <Typography.Title level={3} style={{ marginTop: 0 }}>Report</Typography.Title>
       <Space wrap style={{ marginBottom: 12 }}>
         <Select style={{ width: 240 }} value={projectKey} onChange={(v) => setSp({ project: v })} options={projects.map((p) => ({ value: p.projectKey, label: `${p.projectKey} — ${p.projectName}` }))} placeholder="Chọn dự án" />
         <Input allowClear placeholder="Branch" style={{ width: 150 }} onChange={(e) => setBranch(e.target.value || undefined)} />

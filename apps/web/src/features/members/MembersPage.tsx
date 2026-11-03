@@ -19,7 +19,6 @@ export function MembersPage() {
   const isAdmin = useAuth((s) => s.isSystemAdmin());
   return (
     <div className="page">
-      <Typography.Title level={3} style={{ marginTop: 0 }}>Người dùng</Typography.Title>
       {isAdmin ? <UsersTab /> : <Typography.Text>Bạn không có quyền quản lý người dùng.</Typography.Text>}
     </div>
   );

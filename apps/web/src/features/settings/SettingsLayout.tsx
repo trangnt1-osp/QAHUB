@@ -1,4 +1,4 @@
-import { Select, Space, Tabs, Typography } from 'antd';
+import { Select, Space, Tabs } from 'antd';
 import { Navigate, Outlet, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { EmptyState } from '../../components/EmptyState';
 import { useAuth } from '../auth/authStore';
@@ -23,7 +23,6 @@ export function SettingsLayout() {
   return (
     <div className="page">
       <Space style={{ marginBottom: 8 }}>
-        <Typography.Title level={3} style={{ margin: 0 }}>Cấu hình</Typography.Title>
         <Select style={{ width: 260 }} value={projectKey} onChange={(k) => nav(`/settings/projects/${k}/${tab}`)} options={projects.map((p) => ({ value: p.projectKey, label: `${p.projectKey} — ${p.projectName}` }))} />
       </Space>
       <Tabs activeKey={tab} onChange={(k) => nav(`/settings/projects/${projectKey}/${k}`)} items={[{ key: 'workflow', label: 'Workflow' }, { key: 'general', label: 'Chung' }, { key: 'labels', label: 'Label' }]} />

@@ -19,7 +19,6 @@ export function DashboardPage() {
   const nav = useNavigate();
   return (
     <div className="page">
-      <Typography.Title level={3} style={{ marginTop: 0 }}>Dashboard</Typography.Title>
       <QueryBoundary isLoading={isLoading} error={error} refetch={refetch}>
         {data && (
           <>

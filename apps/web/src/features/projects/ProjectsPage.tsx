@@ -25,8 +25,7 @@ export function ProjectsPage() {
   const nav = useNavigate();
   return (
     <div className="page">
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}>
-        <h2 style={{ margin: 0 }}>Dự án</h2>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
         {isAdmin && <Button type="primary" icon={<PlusOutlined />} onClick={() => setOpen(true)}>Tạo dự án</Button>}
       </div>
       <QueryBoundary isLoading={isLoading} error={error} refetch={refetch} empty={!data.length} emptyTitle="Bạn chưa tham gia dự án nào">

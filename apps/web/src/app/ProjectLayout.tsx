@@ -1,5 +1,5 @@
 import { CheckSquareOutlined, GlobalOutlined, InfoCircleOutlined, ProjectOutlined, UnorderedListOutlined } from '@ant-design/icons';
-import { Breadcrumb, Tabs, Typography } from 'antd';
+import { Breadcrumb, Tabs } from 'antd';
 import { ComponentType, lazy, Suspense } from 'react';
 import { Link, Outlet, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
@@ -39,8 +39,7 @@ export function ProjectLayout() {
   return (
     <div>
       <div style={{ background: '#fff', padding: '12px 24px 0', borderBottom: '1px solid #f0f0f0' }}>
-        <Breadcrumb items={[{ title: <Link to="/projects">Dự án</Link> }, { title: project?.name ?? projectKey }]} />
-        <Typography.Title level={4} style={{ margin: '4px 0 0' }}>{project ? `${project.key} — ${project.name}` : projectKey}</Typography.Title>
+        <Breadcrumb items={[{ title: <Link to="/projects">Dự án</Link> }, { title: project ? `${project.key} — ${project.name}` : projectKey }]} />
         <Tabs activeKey={active} onChange={(k) => nav({ pathname: `/projects/${projectKey}/${k}`, search: k === active ? loc.search : '' })}
           items={projectTabs.map((t) => ({ key: t.path, label: <span><t.icon /> {t.label}</span> }))} />
       </div>

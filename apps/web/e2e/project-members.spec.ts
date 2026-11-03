@@ -4,7 +4,7 @@ import { login } from './helpers';
 test('project members live in project information instead of Member tabs', async ({ page }) => {
   await login(page, 'admin@local.test', 'Admin@12345');
   await page.goto('/members');
-  await expect(page.getByRole('heading', { name: 'Người dùng' })).toBeVisible();
+  await expect(page.getByTestId('screen-title')).toHaveText('Người dùng');
   await expect(page.getByRole('tab', { name: 'Thành viên dự án' })).toHaveCount(0);
   await page.goto('/projects/ELMS/summary');
   await page.getByRole('tab', { name: /Thông tin dự án$/ }).click();

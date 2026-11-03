@@ -29,8 +29,7 @@ export function ApiKeysPage() {
   return (
     <div className="page">
       <Space style={{ marginBottom: 12, width: '100%', justifyContent: 'space-between' }}>
-        <Space><Typography.Title level={3} style={{ margin: 0 }}>API Keys</Typography.Title>
-          <Select style={{ width: 260 }} value={projectKey} onChange={(v) => setSp({ project: v })} options={projects.map((p) => ({ value: p.projectKey, label: `${p.projectKey} — ${p.projectName}` }))} /></Space>
+        <Select style={{ width: 260 }} value={projectKey} onChange={(v) => setSp({ project: v })} options={projects.map((p) => ({ value: p.projectKey, label: `${p.projectKey} — ${p.projectName}` }))} />
         <Button type="primary" icon={<PlusOutlined />} disabled={!projectKey} onClick={() => setOpen(true)}>Tạo API key</Button>
       </Space>
       <Alert type="info" showIcon style={{ marginBottom: 12 }} message="Mỗi key gắn với một dự án, có scope và hạn dùng. Repo Playwright đặt key vào biến môi trường APP_API_KEY trong CI." />
