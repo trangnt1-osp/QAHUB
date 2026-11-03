@@ -26,10 +26,11 @@ describe('Queued test case authorization', () => {
   it('blocks function cascade deletion without test case delete permission', async () => {
     const tx = {
       requirement: { findFirst: jest.fn().mockResolvedValue({ id: 1n, kind: 'function' }), update: jest.fn() },
+      issueFunction: { count: jest.fn().mockResolvedValue(0) },
       testCase: { count: jest.fn().mockResolvedValue(1), updateMany: jest.fn() },
     };
     const prisma = { $transaction: jest.fn().mockImplementation((callback) => callback(tx)) };
-    const service = new RequirementsService(prisma as unknown as PrismaService, undefined!);
+    const service = new RequirementsService(prisma as unknown as PrismaService, undefined!, undefined!);
     await expect(service.remove(1n, 2n, ['requirement.delete'])).rejects.toMatchObject({ code: 'FORBIDDEN' });
     expect(tx.requirement.update).not.toHaveBeenCalled();
     expect(tx.testCase.updateMany).not.toHaveBeenCalled();

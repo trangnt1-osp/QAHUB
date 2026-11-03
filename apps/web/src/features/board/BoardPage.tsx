@@ -22,6 +22,7 @@ import { usePermission } from '../auth/authStore';
 import { CompleteSprintModal } from '../backlog/SprintModals';
 import { useSelectedIssue } from '../issues/useSelectedIssue';
 import { useUi } from '../../stores/ui';
+import { useProjectStructure } from '../project-structure';
 
 interface Column { id: number; name: string; color: string; count?: number }
 interface Lane { id: string; label: string; count: number; cells: Record<string, IssueRow[]> }
@@ -42,11 +43,19 @@ export default function BoardPage() {
   const canComplete = usePermission(projectKey, 'period.complete');
   const canEdit = usePermission(projectKey, 'issue.edit');
   const { data: members = [] } = useMembers(projectKey);
+  const structure = useProjectStructure(projectKey);
   const assignees = useUi((s) => s.assigneeFilter[projectKey] ?? EMPTY);
   const setAssignees = useUi((s) => s.setAssigneeFilter);
   const [q, setQ] = useState('');
   const [groupBy, setGroupBy] = useState<'none' | 'assignee' | 'parent'>('none');
-  const params = { groupBy, q: q || undefined, assigneeIds: assignees.join(',') || undefined, sprintId: searchParams.get('sprintId') || undefined };
+  const params = { groupBy, q: q || undefined, assigneeIds: assignees.join(',') || undefined, sprintId: searchParams.get('sprintId') || undefined,
+    epicId: searchParams.get('epicId') || undefined, moduleId: searchParams.get('moduleId') || undefined, functionId: searchParams.get('functionId') || undefined };
+  const setStructureFilter = (key: string, value?: number) => setSearchParams((previous) => {
+    const next = new URLSearchParams(previous);
+    if (value) next.set(key, String(value)); else next.delete(key);
+    if (key === 'moduleId') next.delete('functionId');
+    return next;
+  }, { replace: true });
   const { data, isLoading, error, refetch } = useQuery<BoardData>({ queryKey: ['board', projectKey, params], queryFn: () => getBoard(projectKey, params as any) });
   const [board, setBoard] = useState<BoardData | null>(null);
   const [dragFrom, setDragFrom] = useState<{ issue: IssueRow; statusId: number } | null>(null);
@@ -122,6 +131,9 @@ export default function BoardPage() {
       <Space wrap style={{ marginBottom: 12, width: '100%' }}>
         <Input.Search placeholder="Search board" allowClear style={{ width: 200 }} onSearch={setQ} />
         <AvatarFilter users={members.map((m) => m.user)} value={assignees} onChange={(ids) => setAssignees(projectKey, ids)} />
+        <Select aria-label="Lọc Epic" allowClear showSearch optionFilterProp="label" placeholder="Epic" style={{ width: 170 }} value={params.epicId ? Number(params.epicId) : undefined} onChange={(value) => setStructureFilter('epicId', value)} options={(structure.data?.epics ?? []).map((epic) => ({ value: epic.id, label: `${epic.code} · ${epic.name}` }))} />
+        <Select aria-label="Lọc Module" allowClear showSearch optionFilterProp="label" placeholder="Module" style={{ width: 160 }} value={params.moduleId ? Number(params.moduleId) : undefined} onChange={(value) => setStructureFilter('moduleId', value)} options={(structure.data?.modules ?? []).map((module) => ({ value: module.id, label: `${module.code} · ${module.name}` }))} />
+        <Select aria-label="Lọc Function" allowClear showSearch optionFilterProp="label" placeholder="Function" style={{ width: 170 }} value={params.functionId ? Number(params.functionId) : undefined} onChange={(value) => setStructureFilter('functionId', value)} options={(structure.data?.functions ?? []).filter((fn) => !params.moduleId || String(fn.moduleId) === params.moduleId).map((fn) => ({ value: fn.id, label: `${fn.code} · ${fn.name}` }))} />
         <Select value={groupBy} onChange={setGroupBy} style={{ width: 170 }} options={[{ value: 'none', label: 'Group: None' }, { value: 'assignee', label: 'Group: Assignee' }, { value: 'parent', label: 'Group: Sub-task' }]} />
         <div style={{ flex: 1 }} />
         {phase && !!board?.activePeriods?.length ? <Select aria-label="Phase đang thực hiện" style={{ minWidth: 200 }} value={sprint?.id} options={board.activePeriods.map((period) => ({ value: period.id, label: period.name }))} onChange={(id) => setSearchParams((prev) => { const next = new URLSearchParams(prev); next.set('sprintId', String(id)); return next; })} /> : sprint && <span className="muted">{sprint.name}</span>}

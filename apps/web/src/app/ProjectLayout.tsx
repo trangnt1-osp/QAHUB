@@ -13,6 +13,7 @@ import BoardPage from '../features/board/BoardPage';
 import SummaryPage from '../features/summary/SummaryPage';
 import ProjectInfoPage from '../features/projects/ProjectInfoPage';
 // AG Grid khá nặng nên chỉ tải khi mở tab Test cases
+const ProjectStructurePage = lazy(() => import('../features/project-structure/ProjectStructurePage'));
 const TestCasesPage = lazy(() => import('../features/test-cases/TestCasesPage'));
 
 export interface ProjectTab {
@@ -30,6 +31,7 @@ export const projectTabs: ProjectTab[] = [
   { key: 'summary', label: 'Summary', icon: GlobalOutlined, path: 'summary', element: SummaryPage, permission: 'project.summary.view' },
   { key: 'backlog', label: 'Backlog', icon: UnorderedListOutlined, path: 'backlog', element: BacklogPage, permission: 'project.backlog.view' },
   { key: 'board', label: 'Active sprint', icon: ProjectOutlined, path: 'board', element: BoardPage, permission: 'project.board.view' },
+  { key: 'structure', label: 'Epic / Module', icon: ProjectOutlined, path: 'structure', element: ProjectStructurePage, permission: 'project.structure.view' },
   { key: 'test-cases', label: 'Test cases', icon: CheckSquareOutlined, path: 'test-cases', element: TestCasesPage, permission: 'testcase.view' },
 ];
 

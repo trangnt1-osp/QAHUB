@@ -11,6 +11,8 @@ export class ListIssuesQuery extends PaginationQuery {
   @IsOptional() @csv() @IsArray() statusIds?: string[];
   @IsOptional() @csv() @IsArray() assigneeIds?: string[];
   @IsOptional() @csv() @IsArray() labelIds?: string[];
+  @IsOptional() @IsString() functionId?: string;
+  @IsOptional() @IsString() moduleId?: string;
   @IsOptional() @IsString() epicId?: string;
   /** id sprint, hoặc "backlog" để lấy item chưa vào sprint */
   @IsOptional() @IsString() sprintId?: string;
@@ -27,6 +29,8 @@ export class CreateIssueDto {
   @IsOptional() @IsInt() sprintId?: number;
   @IsOptional() @IsInt() @Min(0) estimateMinutes?: number;
   @IsOptional() @Matches(/^\d{4}-\d{2}-\d{2}$/) dueDate?: string;
+  @IsOptional() @IsArray() @IsInt({ each: true }) moduleIds?: number[];
+  @IsOptional() @IsArray() @IsInt({ each: true }) functionIds?: number[];
   @IsOptional() @IsArray() @IsInt({ each: true }) labelIds?: number[];
 }
 
@@ -41,6 +45,8 @@ export class UpdateIssueDto {
   @IsOptional() @IsInt() sprintId?: number | null;
   @IsOptional() @IsInt() @Min(0) estimateMinutes?: number | null;
   @IsOptional() @Matches(/^\d{4}-\d{2}-\d{2}$/) dueDate?: string | null;
+  @IsOptional() @IsArray() @IsInt({ each: true }) moduleIds?: number[];
+  @IsOptional() @IsArray() @IsInt({ each: true }) functionIds?: number[];
   @IsOptional() @IsArray() @IsInt({ each: true }) labelIds?: number[];
   @IsOptional() @IsIn(ISSUE_TYPES as unknown as string[]) type?: IssueType;
 }
@@ -69,6 +75,8 @@ export class BulkSetDto {
   @IsOptional() @IsInt() statusId?: number;
   @IsOptional() @IsInt() assigneeId?: number | null;
   @IsOptional() @IsInt() sprintId?: number | null;
+  @IsOptional() @IsArray() @IsInt({ each: true }) moduleIds?: number[];
+  @IsOptional() @IsArray() @IsInt({ each: true }) functionIds?: number[];
   @IsOptional() @IsArray() @IsInt({ each: true }) labelIds?: number[];
   @IsOptional() @IsIn(PRIORITIES as unknown as string[]) priority?: Priority;
   @IsOptional() deleted?: boolean;

@@ -1,5 +1,6 @@
+import { syncIssueStructure } from '../issues/issue-structure';
 import { Injectable, OnModuleInit } from '@nestjs/common';
-import { ERROR_CODES, rankBetween } from '@ospm/shared';
+import { ERROR_CODES, preconditionsText, rankBetween } from '@ospm/shared';
 import { Prisma } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
 import { ActivityService } from '../activity/activity.service';
@@ -60,7 +61,8 @@ export class TestCasesService implements OnModuleInit {
   private where(projectId: bigint, f: TestCaseFilterQuery): Prisma.Sql {
     const c: Prisma.Sql[] = [Prisma.sql`tc.project_id = ${projectId} AND tc.deleted_at IS NULL`];
     if (f.functionId) c.push(Prisma.sql`tc.function_id = ${parseId(f.functionId)}`);
-    if (f.epicId) c.push(Prisma.sql`tc.function_id IN (SELECT function_id FROM requirement_links WHERE epic_id = ${parseId(f.epicId)})`);
+    if (f.moduleId) c.push(Prisma.sql`tc.function_id IN (SELECT id FROM requirements WHERE module_id = ${parseId(f.moduleId)} AND deleted_at IS NULL)`);
+    if (f.epicId) c.push(Prisma.sql`tc.function_id IN (SELECT function_id FROM epic_function_coverage WHERE epic_id = ${parseId(f.epicId)})`);
     if (f.status?.length) c.push(Prisma.sql`tc.status = ANY(${f.status})`);
     if (f.priority?.length) c.push(Prisma.sql`tc.priority = ANY(${f.priority})`);
     if (f.categoryId?.length) c.push(Prisma.sql`tc.category_id = ANY(${f.categoryId.map((v) => parseId(v))})`);
@@ -345,7 +347,7 @@ export class TestCasesService implements OnModuleInit {
         const issue = await tx.issue.create({
           data: {
             projectId: tc.projectId, number, type: 'bug', title: (dto.title?.trim() || `[${tc.code}] ${tc.title}`).slice(0, 255),
-            description: doc(`Test case: ${tc.code} — ${tc.title}`, ...(tc.preconditions ? [`Pre-conditions: ${tc.preconditions}`] : []), ...steps) as any,
+            description: doc(`Test case: ${tc.code} — ${tc.title}`, ...(tc.preconditions ? [`Pre-conditions: ${preconditionsText(tc.preconditions)}`] : []), ...steps) as any,
             statusId: settings.initialManualStatusId, source: 'manual', reporterId: user.id, rank: await rankAtEnd(tx, tc.projectId, null), labels: { create: [{ labelId: manual.id }] },
           },
         });
@@ -358,6 +360,9 @@ export class TestCasesService implements OnModuleInit {
           await tx.testCaseVersion.create({ data: { testCaseId: id, version: upd.version, snapshot: snapshotOf(upd) as any, changedBy: user.id } });
         }
       } else throw unprocessable(ERROR_CODES.VALIDATION_ERROR, 'Cần issueKey hoặc createBug');
+      const linked = await tx.issue.findUniqueOrThrow({ where: { id: issueId }, include: { functions: true, epicRequirement: { include: { epicLinks: { where: { function: { deletedAt: null } } } } } } });
+      const assigned = [...linked.functions, ...(linked.epicRequirement?.epicLinks ?? [])];
+      await syncIssueStructure(tx, issueId, tc.projectId, undefined, [...assigned.map(f => Number(f.functionId)), Number(tc.functionId)]);
       await tx.testCaseBug.upsert({ where: { testCaseId_issueId: { testCaseId: id, issueId } }, update: {}, create: { testCaseId: id, issueId } });
       return { issueId, key };
     });
@@ -371,7 +376,7 @@ export class TestCasesService implements OnModuleInit {
 
   // ---------- Summary & category ----------
 
-  async summary(projectId: bigint, f: { functionId?: string; epicId?: string }) {
+  async summary(projectId: bigint, f: { functionId?: string; epicId?: string; moduleId?: string }) {
     const rows = await this.prisma.$queryRaw<{ category_id: bigint | null; status: string; n: bigint }[]>`
       SELECT tc.category_id, tc.status, count(*) n FROM test_cases tc
       WHERE ${this.where(projectId, f)} GROUP BY 1, 2`;

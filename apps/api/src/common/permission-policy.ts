@@ -79,6 +79,7 @@ export const ENDPOINT_PERMISSIONS: Record<string, Permission | Permission[]> = {
 };
 
 export function mutationPermissions(endpoint: string, body: unknown): Permission[] {
+  if (['TestCasesController.createRequirement', 'TestCasesController.updateRequirement', 'TestCasesController.deleteRequirement', 'StructureController.create', 'StructureController.update', 'StructureController.remove'].includes(endpoint)) return ['project.structure.view'];
   const payload = body as { set?: Record<string, unknown> } | undefined;
   const set = payload?.set ?? {};
   if (endpoint === 'IssuesController.bulkUpdateIssues') {

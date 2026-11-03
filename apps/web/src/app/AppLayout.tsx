@@ -98,7 +98,7 @@ export function AppLayout() {
           <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 12 }}>
             {any('issue.view') && <Input.Search placeholder="Tìm nhanh theo mã item (ELMS-2249)" allowClear style={{ width: 'clamp(100px, 25vw, 360px)' }}
               value={quickSearch.value} onChange={(e) => quickSearch.onChange(e.target.value)} onSearch={quickSearch.onSearch} />}
-            {any('issue.create') && <Button type="primary" icon={<PlusOutlined />} onClick={() => show()}>Tạo</Button>}
+            {any('issue.create') && <Button type="primary" icon={<PlusOutlined />} onClick={() => show(projectKey)}>Tạo</Button>}
           </div>
         </Header>
         <Content style={{ minHeight: 0, overflow: 'auto' }}><Outlet /></Content>

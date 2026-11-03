@@ -11,7 +11,24 @@ datasource db {
 // Ghi chú: CHECK constraint, index một phần (partial), cột tsvector sinh tự động và GIN index
 // được khai báo trong migration SQL (prisma/migrations/0001_init/migration.sql) vì Prisma chưa mô tả được.
 
+model ProjectImportSession {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  projectId BigInt @map("project_id")
+  ownerId BigInt @map("owner_id")
+  scope String
+  fileName String @map("file_name")
+  payload Json
+  preview Json
+  snapshot String
+  expiresAt DateTime @map("expires_at") @db.Timestamptz(6)
+  result Json?
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  @@index([projectId, ownerId])
+  @@map("project_import_sessions")
+}
+
 model User {
+  ownedEnvironments ProjectEnvironment[]
   id           BigInt    @id @default(autoincrement())
   email        String    @unique
   displayName  String    @map("display_name")
@@ -54,6 +71,7 @@ model RefreshToken {
 }
 
 model Project {
+  environments ProjectEnvironment[]
   id          BigInt    @id @default(autoincrement())
   key         String    @unique
   name        String
@@ -80,11 +98,33 @@ model Project {
   runs         AutomationRun[]
   attachments  Attachment[]
   activities   ActivityLog[]
+  modules      ProjectModule[]
   requirements Requirement[]
   categories   TestCategory[]
   testCases    TestCase[]
 
   @@map("projects")
+}
+
+model ProjectEnvironment {
+  id BigInt @id @default(autoincrement())
+  projectId BigInt @map("project_id")
+  name String
+  kind String
+  appUrl String? @map("app_url")
+  apiUrl String? @map("api_url")
+  deployedVersion String? @map("deployed_version")
+  ownerId BigInt? @map("owner_id")
+  status String @default("active")
+  notes String?
+  version Int @default(1)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(6)
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  owner User? @relation(fields: [ownerId], references: [id], onDelete: SetNull)
+  @@index([projectId])
+  @@map("project_environments")
 }
 
 model ProjectMember {
@@ -265,6 +305,9 @@ model Issue {
   statusChanges IssueStatusChange[]
   results      AutomationResult[]
   testCaseBugs TestCaseBug[]
+  modules IssueModule[]
+  functions IssueFunction[]
+  epicRequirement Requirement?
 
   @@unique([projectId, number])
   @@map("issues")
@@ -444,6 +487,44 @@ model ActivityLog {
   @@map("activity_log")
 }
 
+model ProjectModule {
+  id BigInt @id @default(autoincrement())
+  projectId BigInt @map("project_id")
+  code String
+  name String
+  description String?
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(6)
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  functions Requirement[]
+  issues IssueModule[]
+  epics EpicModule[]
+  @@unique([projectId, code])
+  @@map("project_modules")
+}
+model IssueModule {
+  issueId BigInt @map("issue_id")
+  moduleId BigInt @map("module_id")
+  issue Issue @relation(fields: [issueId], references: [id], onDelete: Cascade)
+  module ProjectModule @relation(fields: [moduleId], references: [id])
+  @@id([issueId, moduleId])
+  @@map("issue_modules")
+}
+model IssueFunction {
+  issueId BigInt @map("issue_id")
+  functionId BigInt @map("function_id")
+  issue Issue @relation(fields: [issueId], references: [id], onDelete: Cascade)
+  function Requirement @relation(fields: [functionId], references: [id])
+  @@id([issueId, functionId])
+  @@map("issue_functions")
+}
+model EpicModule {
+  epicId BigInt @map("epic_id")
+  moduleId BigInt @map("module_id")
+  epic Requirement @relation(fields: [epicId], references: [id], onDelete: Cascade)
+  module ProjectModule @relation(fields: [moduleId], references: [id])
+  @@id([epicId, moduleId])
+  @@map("epic_modules")
+}
 model Requirement {
   id           BigInt    @id @default(autoincrement())
   projectId    BigInt    @map("project_id")
@@ -456,6 +537,12 @@ model Requirement {
   deletedAt    DateTime? @map("deleted_at") @db.Timestamptz(6)
   project      Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
+  moduleId BigInt? @map("module_id")
+  epicIssueId BigInt? @unique @map("epic_issue_id")
+  module ProjectModule? @relation(fields: [moduleId], references: [id])
+  epicIssue Issue? @relation(fields: [epicIssueId], references: [id])
+  issueFunctions IssueFunction[]
+  modules EpicModule[]
   epicLinks     RequirementLink[]   @relation("LinkEpic")
   functionLinks RequirementLink[]   @relation("LinkFunction")
   sources       RequirementSource[]

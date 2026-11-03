@@ -1,0 +1,56 @@
+import { expect, test } from '@playwright/test';
+import { login } from './helpers';
+
+test('create and add another resets content and preserves the last Function, Priority, Category and Status', async ({ page }) => {
+  await login(page, 'admin@local.test', 'Admin@12345');
+  const session = await (await page.request.post('/api/v1/auth/login', { data: { email: 'admin@local.test', password: 'Admin@12345' } })).json();
+  const headers = { Authorization: `Bearer ${session.accessToken}` };
+  const templates = await (await page.request.get('/api/v1/workflow-templates', { headers })).json();
+  expect((await page.request.post('/api/v1/projects', { headers, data: { key: 'TCDUI', name: 'Test case drawer UI', workflowTemplateId: templates[0].id } })).ok()).toBeTruthy();
+  const fnResponse = await page.request.post('/api/v1/projects/TCDUI/requirements', { headers, data: { kind: 'function', code: 'FN-TCDUI', name: 'Login' } });
+  expect(fnResponse.ok()).toBeTruthy();
+  const fn = await fnResponse.json();
+  const nextFn = await (await page.request.post('/api/v1/projects/TCDUI/requirements', { headers, data: { kind: 'function', code: 'FN-NEXT', name: 'Next function' } })).json();
+  const category = await (await page.request.post('/api/v1/projects/TCDUI/test-categories', { headers, data: { name: 'Regression' } })).json();
+  await page.goto(`/projects/TCDUI/test-cases?functionId=${fn.id}`);
+  await page.getByRole('button', { name: /Thêm test case/ }).click();
+  const drawer = page.getByRole('dialog');
+  await expect(drawer).toHaveClass(/ant-drawer/);
+  await expect(drawer.getByLabel('Checklist Item')).toBeEnabled();
+  for (const [label, option] of [['Function', 'FN-NEXT · Next function'], ['Priority', 'high'], ['Category', 'Regression'], ['Status', 'Blocked']]) {
+    await drawer.getByLabel(label, { exact: true }).press('ArrowDown');
+    await page.locator('.ant-select-dropdown:visible .ant-select-item-option-content').getByText(option, { exact: true }).click();
+  }
+  await drawer.getByLabel('Checklist Item').fill('Sign in successfully');
+  const editor = drawer.locator('.tiptap');
+  await editor.fill('Active account');
+  await editor.press('ControlOrMeta+A');
+  await drawer.getByRole('button', { name: 'B', exact: true }).click();
+  await drawer.getByLabel('Notes').fill('Desktop browser');
+  await drawer.getByLabel('Tag automation').fill('@login-drawer');
+  await drawer.getByRole('button', { name: /Thêm bước/ }).click();
+  await drawer.getByPlaceholder('Bước thực hiện').fill('Submit credentials');
+  await drawer.getByPlaceholder('Expected').fill('Dashboard displayed');
+  const creation = page.waitForResponse(response => response.request().method() === 'POST' && response.url().endsWith('/projects/TCDUI/test-cases'));
+  await drawer.getByRole('button', { name: 'Lưu và thêm mới', exact: true }).click();
+  const response = await creation;
+  expect(response.ok()).toBeTruthy();
+  const tc = await response.json();
+  await expect(drawer.getByRole('button', { name: 'Lưu và thêm mới', exact: true })).toBeEnabled();
+  await expect(drawer.getByLabel('Checklist Item')).toHaveValue('');
+  await expect(editor).toHaveText('');
+  await expect(drawer.getByLabel('Notes')).toHaveValue('');
+  await expect(drawer.getByLabel('Tag automation')).toHaveValue('');
+  await expect(drawer.getByPlaceholder('Expected')).toHaveCount(0);
+  const detail = await (await page.request.get(`/api/v1/test-cases/${tc.id}`, { headers })).json();
+  expect(JSON.parse(detail.preconditions).content[0].content[0]).toMatchObject({ text: 'Active account', marks: [{ type: 'bold' }] });
+  expect(detail).toMatchObject({ notes: 'Desktop browser', automationTag: '@login-drawer', status: 'blocked', steps: [{ action: 'Submit credentials', expected: 'Dashboard displayed' }] });
+  await drawer.getByLabel('Checklist Item').fill('Another case');
+  const secondCreation = page.waitForResponse(response => response.request().method() === 'POST' && response.url().endsWith('/projects/TCDUI/test-cases'));
+  await drawer.getByRole('button', { name: 'Lưu và thêm mới', exact: true }).click();
+  const secondResponse = await secondCreation;
+  expect(secondResponse.ok()).toBeTruthy();
+  expect(secondResponse.request().postDataJSON()).toMatchObject({ functionId: nextFn.id, priority: 'high', categoryId: category.id, status: 'blocked', title: 'Another case', steps: [] });
+  expect((await secondResponse.json()).id).not.toBe(tc.id);
+  await expect(drawer.getByLabel('Checklist Item')).toHaveValue('');
+});

@@ -29,7 +29,7 @@ test('test case tree and list resize without losing selection and remember the c
   await page.mouse.up();
   await expect.poll(async () => (await treePanel.boundingBox())!.width).toBeLessThan(resized - 80);
   await expect(page.getByTestId('checklist-summary')).toBeVisible();
-  await page.getByRole('treeitem').nth(2).locator('.ant-tree-node-content-wrapper').click();
+  await page.getByRole('treeitem').filter({ hasText: /NDS-U-/ }).first().locator('.ant-tree-node-content-wrapper').click();
   await expect(page).toHaveURL(/functionId=\d+/);
   const selectedUrl = page.url();
   const selectedHandle = (await dragger.boundingBox())!;

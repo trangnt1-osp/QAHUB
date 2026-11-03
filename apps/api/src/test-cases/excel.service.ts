@@ -1,5 +1,7 @@
+import { syncIssueStructure } from '../issues/issue-structure';
+import { parseId } from '../common/bigint';
 import { Injectable, OnModuleInit } from '@nestjs/common';
-import { ERROR_CODES, generateRanks, Permission, rankBetween, TEST_CASE_PRIORITIES } from '@ospm/shared';
+import { ERROR_CODES, generateRanks, Permission, preconditionsText, rankBetween, TEST_CASE_PRIORITIES } from '@ospm/shared';
 import ExcelJS from 'exceljs';
 import { StorageService } from '../attachments/storage.service';
 import { AppException, forbidden } from '../common/errors';
@@ -34,6 +36,7 @@ export interface ParsedRow {
 export interface ParsedSheet {
   name: string;
   epics: { code: string; name: string }[];
+  module?: { code: string; name: string; description?: string };
   fn: { code: string; name: string; traceRef: string; sources: string[] };
   rows: ParsedRow[];
 }
@@ -65,19 +68,20 @@ export class ExcelService implements OnModuleInit {
 
   // ---------- Xuất ----------
 
-  async runExport(d: { projectId: string; functionId?: string; userId: string }) {
+  async runExport(d: { projectId: string; functionId?: string; moduleId?: string; epicId?: string; userId: string }) {
     await this.authorizeJob(d, 'testcase.export');
     const projectId = BigInt(d.projectId);
     const project = await this.prisma.project.findUniqueOrThrow({ where: { id: projectId } });
-    const buffer = await this.buildWorkbook(projectId, d.functionId ? BigInt(d.functionId) : undefined);
+    const buffer = await this.buildWorkbook(projectId, d.functionId ? BigInt(d.functionId) : undefined, d.moduleId ? BigInt(d.moduleId) : undefined, d.epicId ? BigInt(d.epicId) : undefined);
     const fileName = `${project.key}-test-cases-${new Date().toISOString().slice(0, 10)}.xlsx`;
     const objectKey = `${project.key}/exports/${Date.now()}-${fileName}`;
     await this.storage.putObject(objectKey, buffer, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     return { objectKey, fileName };
   }
 
-  async buildWorkbook(projectId: bigint, functionId?: bigint): Promise<Buffer> {
-    const fns = await this.prisma.requirement.findMany({ where: { projectId, kind: 'function', deletedAt: null, ...(functionId ? { id: functionId } : {}) }, orderBy: [{ rank: 'asc' }, { id: 'asc' }] });
+  async buildWorkbook(projectId: bigint, functionId?: bigint, moduleId?: bigint, epicId?: bigint): Promise<Buffer> {
+    const coverage = epicId ? await this.prisma.$queryRawUnsafe<{ function_id: bigint }[]>('SELECT function_id FROM epic_function_coverage WHERE epic_id=$1',epicId) : undefined;
+    const fns = await this.prisma.requirement.findMany({ where: { ...(coverage ? { id: { in: coverage.map(r => r.function_id) } } : {}), ...(moduleId ? { moduleId } : {}), projectId, kind: 'function', deletedAt: null, ...(functionId ? { AND: [{ id: functionId }] } : {}) }, orderBy: [{ rank: 'asc' }, { id: 'asc' }] });
     const wb = new ExcelJS.Workbook();
     wb.creator = 'OSPM';
     const used = new Set<string>();
@@ -99,7 +103,8 @@ export class ExcelService implements OnModuleInit {
       ws.addRow(['Function', fn.code, fn.name]);
       ws.addRow(['Trace Ref', fn.traceRef ?? '']);
       ws.addRow(['Source', sources.map((s) => s.path).join('\n')]);
-      ws.addRow([]);
+      const module = fn.moduleId ? await this.prisma.projectModule.findUnique({ where: { id: fn.moduleId } }) : null;
+      ws.addRow(module ? ['Module',module.code,module.name,module.description ?? ''] : []);
       ws.addRow(['Checklist Summary']).font = { bold: true };
       ws.addRow(['Category', ...Object.values(STATUS_LABEL), 'Total']).font = { bold: true };
       const tot = Object.fromEntries(Object.keys(STATUS_LABEL).map((status) => [status, cases.filter((t) => t.status === status).length]));
@@ -116,7 +121,7 @@ export class ExcelService implements OnModuleInit {
       for (const t of cases) {
         const steps = normalizeSteps(t.steps as any);
         ws.addRow([
-          t.code, PRIORITY_LABEL[t.priority], t.category?.name ?? '', t.title, t.preconditions ?? '',
+          t.code, PRIORITY_LABEL[t.priority], t.category?.name ?? '', t.title, preconditionsText(t.preconditions),
           steps.map((s) => `${s.no}. ${s.action}`).join('\n'), steps.map((s) => `${s.no}. ${s.expected}`).join('\n'),
           STATUS_LABEL[t.status], t.bugs.map((b) => `${b.issue.project.key}-${b.issue.number}`).join(', '), t.notes ?? '',
         ]);
@@ -151,6 +156,7 @@ export class ExcelService implements OnModuleInit {
       const epicNames = info['epic'] ? cellText(info['epic'].getCell(3)).split('|').map((s) => s.trim()) : [];
       const sheet: ParsedSheet = {
         name: ws.name,
+        ...(info['module'] && cellText(info['module'].getCell(2)) ? { module: { code: cellText(info['module'].getCell(2)), name: cellText(info['module'].getCell(3)) || cellText(info['module'].getCell(2)), description: cellText(info['module'].getCell(4)) } } : {}),
         epics: epicCodes.map((code, i) => ({ code, name: epicNames[i] || code })),
         fn: {
           code: fnCode, name: cellText(fnRow.getCell(3)) || fnCode, traceRef: info['traceref'] ? cellText(info['traceref'].getCell(2)) : '',
@@ -220,20 +226,27 @@ export class ExcelService implements OnModuleInit {
     return stats;
   }
 
-  private async upsertRequirement(tx: Tx, projectId: bigint, kind: 'epic' | 'function', code: string, name: string, extra: { traceRef?: string } = {}) {
+  private async upsertRequirement(tx: Tx, projectId: bigint, kind: 'epic' | 'function', code: string, name: string, extra: { traceRef?: string; moduleId?: bigint } = {}) {
     const found = await tx.requirement.findUnique({ where: { projectId_code: { projectId, code } } });
     if (found) {
-      if (found.deletedAt || found.name !== name || (extra.traceRef !== undefined && found.traceRef !== extra.traceRef)) {
-        return { row: await tx.requirement.update({ where: { id: found.id }, data: { deletedAt: null, name, ...(extra.traceRef !== undefined ? { traceRef: extra.traceRef || null } : {}) } }), created: false };
+      if(found.kind !== kind) throw new AppException(422, ERROR_CODES.IMPORT_INVALID, 'Mã yêu cầu đã thuộc loại khác');
+      if (found.deletedAt || found.name !== name || (extra.moduleId !== undefined && found.moduleId !== extra.moduleId) || (extra.traceRef !== undefined && found.traceRef !== extra.traceRef)) {
+        return { row: await tx.requirement.update({ where: { id: found.id }, data: { deletedAt: null, name, ...(extra.moduleId !== undefined ? { moduleId: extra.moduleId } : {}), ...(extra.traceRef !== undefined ? { traceRef: extra.traceRef || null } : {}) } }), created: false };
       }
       return { row: found, created: false };
     }
     const last = await tx.requirement.findFirst({ where: { projectId, kind, deletedAt: null }, orderBy: { rank: 'desc' } });
-    return { row: await tx.requirement.create({ data: { projectId, kind, code, name, traceRef: extra.traceRef || null, rank: rankBetween(last?.rank ?? null, null) } }), created: true };
+    return { row: await tx.requirement.create({ data: { projectId, kind, code, name, moduleId: extra.moduleId, traceRef: extra.traceRef || null, rank: rankBetween(last?.rank ?? null, null) } }), created: true };
   }
 
   private async commitSheet(tx: Tx, projectId: bigint, userId: bigint, sheet: ParsedSheet, stats: { epics: number; functions: number; created: number; updated: number; bugsLinked: number }) {
-    const fn = await this.upsertRequirement(tx, projectId, 'function', sheet.fn.code, sheet.fn.name, { traceRef: sheet.fn.traceRef });
+    // Restore the Module before activating a Function that still points at its old Module.
+    const module = sheet.module ? await tx.projectModule.upsert({
+      where: { projectId_code: { projectId, code: sheet.module.code } },
+      create: { projectId, ...sheet.module },
+      update: { name: sheet.module.name, description: sheet.module.description, deletedAt: null },
+    }) : undefined;
+    const fn = await this.upsertRequirement(tx, projectId, 'function', sheet.fn.code, sheet.fn.name, { traceRef: sheet.fn.traceRef, moduleId: module?.id });
     if (fn.created) stats.functions++;
     for (const e of sheet.epics) {
       const epic = await this.upsertRequirement(tx, projectId, 'epic', e.code, e.name);
@@ -312,6 +325,11 @@ export class ExcelService implements OnModuleInit {
       const issueByKey = new Map(issues.map((i) => [`${project.key}-${i.number}`, i.id]));
       const cases = new Map((await tx.testCase.findMany({ where: { projectId, code: { in: bugLinks.map((b) => b.code) } }, select: { id: true, code: true } })).map((t) => [t.code, t.id]));
       const data = bugLinks.flatMap((b) => b.keys.map((k) => ({ testCaseId: cases.get(b.code), issueId: issueByKey.get(k) }))).filter((d): d is { testCaseId: bigint; issueId: bigint } => !!d.testCaseId && !!d.issueId);
+      for(const issueId of new Set(data.map(d => d.issueId))) {
+        const linked=await tx.issue.findUniqueOrThrow({ where: { id: issueId }, include: { functions: true, epicRequirement: { include: { epicLinks: { where: { function: { deletedAt: null } } } } } } });
+        const assigned=[...linked.functions,...(linked.epicRequirement?.epicLinks ?? [])];
+        await syncIssueStructure(tx,issueId,projectId,undefined,[...assigned.map(f => Number(f.functionId)),Number(fn.row.id)]);
+      }
       if (data.length) stats.bugsLinked += (await tx.testCaseBug.createMany({ data, skipDuplicates: true })).count;
     }
   }
@@ -342,8 +360,9 @@ export class ExcelService implements OnModuleInit {
     await this.projectCtx.requirePermission(user, project.id, permission);
   }
 
-  async enqueueExport(projectId: bigint, userId: bigint, functionId?: string) {
-    return this.queue.send(JOBS.TEST_CASES_EXPORT, { projectId: projectId.toString(), userId: userId.toString(), functionId });
+  async enqueueExport(projectId: bigint, userId: bigint, functionId?: string, moduleId?: string, epicId?: string) {
+    if(functionId) parseId(functionId); if(moduleId) parseId(moduleId); if(epicId) parseId(epicId);
+    return this.queue.send(JOBS.TEST_CASES_EXPORT, { projectId: projectId.toString(), userId: userId.toString(), functionId, moduleId, epicId });
   }
 }
 

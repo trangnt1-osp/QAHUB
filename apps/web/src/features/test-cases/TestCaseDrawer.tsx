@@ -2,18 +2,20 @@ import { DeleteOutlined, HolderOutlined, PlusOutlined } from '@ant-design/icons'
 import { DndContext, DragEndEvent, PointerSensor, closestCenter, useSensor, useSensors } from '@dnd-kit/core';
 import { SortableContext, arrayMove, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { App, Button, Collapse, Drawer, Form, Input, List, Select, Space, Tag, Typography } from 'antd';
+import { App, Button, Collapse, Drawer, Form, Input, List, Select, Space, Spin, Tag, Typography } from 'antd';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { TEST_CASE_PRIORITIES, TEST_CASE_STATUSES } from '@ospm/shared';
-import { getTestCase, linkTestCaseBug, unlinkTestCaseBug, updateTestCase } from '../../api/generated/api';
+import { createTestCase, getTestCase, linkTestCaseBug, unlinkTestCaseBug, updateTestCase } from '../../api/generated/api';
 import { errorCode, errorMessage } from '../../api/http';
 import { useTestCategories } from '../../api/hooks';
 import { fmtDateTime } from '../../lib/date';
 import { fmtNumber } from '../../lib/number';
 import { usePermission } from '../auth/authStore';
 import { STATUS_COLOR, STATUS_LABEL } from './labels';
+import { ErrorState } from '../../components/EmptyState';
+import { PreconditionsEditor } from './PreconditionsEditor';
 
 interface Step { id: string; action: string; expected: string }
 
@@ -31,38 +33,65 @@ function StepRow({ step, index, onChange, onRemove, disabled }: { step: Step; in
 }
 
 /** Drawer chi tiết test case: trình sửa từng cặp Bước – Expected, bug liên kết, lịch sử phiên bản. */
-interface TestCaseDrawerProps { projectKey: string; id: number | null; onClose: () => void; onSaved: (row: any) => void }
+interface TestCaseDrawerProps {
+  projectKey: string; id: number | null; onClose: () => void; onSaved: (row: any) => void;
+  creating?: boolean; functions?: { id: number; code: string; name: string }[];
+  defaultFunctionId?: string; onCreated?: (row: any) => void;
+}
 
 export function TestCaseDrawer(props: TestCaseDrawerProps) {
   const canView = usePermission(props.projectKey, 'testcase.view');
-  return canView ? <AuthorizedTestCaseDrawer {...props} /> : null;
+  const canCreate = usePermission(props.projectKey, 'testcase.create');
+  return (props.creating ? canCreate : canView) ? <AuthorizedTestCaseDrawer {...props} /> : null;
 }
 
-function AuthorizedTestCaseDrawer({ projectKey, id, onClose, onSaved }: TestCaseDrawerProps) {
-  const { data, refetch } = useQuery<any>({ queryKey: ['test-case', id], queryFn: () => getTestCase(String(id)), enabled: !!id });
+function AuthorizedTestCaseDrawer({ projectKey, id, onClose, onSaved, creating = false, functions = [], defaultFunctionId, onCreated }: TestCaseDrawerProps) {
+  const { data, refetch, error, isLoading } = useQuery<any>({ queryKey: ['test-case', id], queryFn: () => getTestCase(String(id)), enabled: !creating && !!id });
   const { data: categories = [] } = useTestCategories(projectKey);
   const canEdit = usePermission(projectKey, 'testcase.edit');
+  const canCreate = usePermission(projectKey, 'testcase.create');
+  const editable = creating ? canCreate : canEdit;
+  const open = creating || !!id;
   const canLinkBug = usePermission(projectKey, 'testcase.bug.link');
   const canCreateBug = usePermission(projectKey, 'issue.create');
   const [form] = Form.useForm();
   const [steps, setSteps] = useState<Step[]>([]);
   const [saving, setSaving] = useState(false);
+  const [ready, setReady] = useState(false);
   const [bugKey, setBugKey] = useState('');
   const { message } = App.useApp();
   const qc = useQueryClient();
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
   useEffect(() => {
-    if (!data) return;
+    if (creating || !data || !ready) return;
     form.setFieldsValue({ title: data.title, preconditions: data.preconditions, priority: data.priority, status: data.status, categoryId: data.categoryId, notes: data.notes, automationTag: data.automationTag });
     setSteps((data.steps ?? []).map((s: any) => ({ id: s.id, action: s.action, expected: s.expected })));
-  }, [data, form]);
+  }, [data, form, creating, ready]);
+
+  useEffect(() => { if (!open) { setReady(false); setBugKey(''); } }, [open]);
 
   const save = async () => {
-    if (!canEdit) return;
-    const v = await form.validateFields();
+    if (!editable || !ready || saving || (!creating && !data)) return;
+    const v = await form.validateFields().catch(() => null);
+    if (!v) return;
     setSaving(true);
     try {
+      if (creating) {
+        const row = await createTestCase(projectKey, {
+          functionId: v.functionId, title: v.title.trim(), preconditions: v.preconditions,
+          priority: v.priority, status: v.status, categoryId: v.categoryId ?? null,
+          notes: v.notes, automationTag: v.automationTag, steps,
+        });
+        message.success('Đã tạo test case');
+        form.resetFields();
+        form.setFieldsValue({ functionId: v.functionId, priority: v.priority, categoryId: v.categoryId, status: v.status });
+        setSteps([]);
+        onCreated?.(row);
+        requestAnimationFrame(() => form.focusField('title'));
+        void qc.invalidateQueries({ queryKey: ['tc-summary'] });
+        return;
+      }
       const updated = await updateTestCase(String(id), {
         version: data.version, title: v.title, preconditions: v.preconditions ?? null, priority: v.priority, status: v.status, categoryId: v.categoryId ?? null, notes: v.notes ?? null,
         automationTag: v.automationTag ?? null, steps: steps.map((s) => ({ id: s.id, action: s.action, expected: s.expected })),
@@ -78,22 +107,35 @@ function AuthorizedTestCaseDrawer({ projectKey, id, onClose, onSaved }: TestCase
   };
 
   return (
-    <Drawer open={!!id} onClose={onClose} width="min(900px, 94vw)" destroyOnClose title={data ? `${data.code}` : 'Test case'}
-      extra={canEdit && <Button type="primary" onClick={save} loading={saving}>Lưu</Button>}>
-      {data && (
-        <Form form={form} layout="vertical" disabled={!canEdit}>
-          <Form.Item name="title" label="Checklist Item" rules={[{ required: true }]}><Input /></Form.Item>
-          <Form.Item name="preconditions" label="Pre-conditions"><Input.TextArea autoSize={{ minRows: 2, maxRows: 8 }} /></Form.Item>
+    <Drawer open={open} onClose={onClose} width="min(900px, 94vw)" destroyOnClose title={creating ? 'Thêm test case' : data ? `${data.code}` : 'Test case'} closable={!saving} maskClosable={!saving} keyboard={!saving}
+      afterOpenChange={(visible) => {
+        if (visible && creating) {
+          form.resetFields();
+          form.setFieldsValue({ functionId: defaultFunctionId ? Number(defaultFunctionId) : undefined, priority: 'medium', status: 'not_started' });
+          setSteps([]);
+        }
+        setReady(visible);
+      }}
+      extra={<Space>{creating && <Button onClick={onClose} disabled={saving}>Hủy</Button>}{editable && <Button type="primary" onClick={save} disabled={!ready || (!creating && !data)} loading={saving}>{creating ? 'Lưu và thêm mới' : 'Lưu'}</Button>}</Space>}>
+      {!creating && isLoading && <Spin />}
+      {!creating && error && <ErrorState error={error} onRetry={() => void refetch()} />}
+      {(creating || data) && (
+        <Form form={form} layout="vertical" disabled={!editable || saving || !ready}>
+          <Form.Item name={creating ? 'functionId' : undefined} label="Function" htmlFor={creating ? 'functionId' : 'test-case-function'} rules={creating ? [{ required: true, message: 'Chọn function' }] : []}>
+            {creating ? <Select showSearch optionFilterProp="label" options={functions.map((f) => ({ value: f.id, label: `${f.code} · ${f.name}` }))} /> : <Input id="test-case-function" readOnly value={data.function ? `${data.function.code} · ${data.function.name}` : data.functionCode} />}
+          </Form.Item>
+          <Form.Item name="title" label="Checklist Item" rules={[{ required: true, whitespace: true }]}><Input /></Form.Item>
+          <Form.Item name="preconditions" label="Pre-conditions"><PreconditionsEditor disabled={!editable || saving || !ready} /></Form.Item>
           <div style={{ fontWeight: 500, marginBottom: 8 }}>Các bước &amp; kết quả mong đợi</div>
           <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={(e: DragEndEvent) => {
-            if (!canEdit || !e.over || e.active.id === e.over.id) return;
+            if (!editable || saving || !ready || !e.over || e.active.id === e.over.id) return;
             setSteps((s) => arrayMove(s, s.findIndex((x) => x.id === e.active.id), s.findIndex((x) => x.id === e.over!.id)));
           }}>
             <SortableContext items={steps.map((s) => s.id)} strategy={verticalListSortingStrategy}>
-              {steps.map((s, i) => <StepRow key={s.id} step={s} index={i} disabled={!canEdit} onChange={(n) => setSteps((a) => a.map((x) => (x.id === s.id ? n : x)))} onRemove={() => setSteps((a) => a.filter((x) => x.id !== s.id))} />)}
+              {steps.map((s, i) => <StepRow key={s.id} step={s} index={i} disabled={!editable || saving || !ready} onChange={(n) => setSteps((a) => a.map((x) => (x.id === s.id ? n : x)))} onRemove={() => setSteps((a) => a.filter((x) => x.id !== s.id))} />)}
             </SortableContext>
           </DndContext>
-          {canEdit && <Button icon={<PlusOutlined />} onClick={() => setSteps((a) => [...a, { id: crypto.randomUUID(), action: '', expected: '' }])} style={{ marginBottom: 16 }}>Thêm bước</Button>}
+          {editable && <Button icon={<PlusOutlined />} onClick={() => setSteps((a) => [...a, { id: crypto.randomUUID(), action: '', expected: '' }])} style={{ marginBottom: 16 }}>Thêm bước</Button>}
           <Space size="large" wrap style={{ display: 'flex' }}>
             <Form.Item name="priority" label="Priority"><Select style={{ width: 140 }} options={TEST_CASE_PRIORITIES.map((p) => ({ value: p, label: p }))} /></Form.Item>
             <Form.Item name="categoryId" label="Category"><Select allowClear style={{ width: 180 }} options={categories.map((c) => ({ value: c.id, label: c.name }))} /></Form.Item>
@@ -103,7 +145,7 @@ function AuthorizedTestCaseDrawer({ projectKey, id, onClose, onSaved }: TestCase
           <Form.Item name="notes" label="Notes"><Input.TextArea autoSize={{ minRows: 2, maxRows: 6 }} /></Form.Item>
         </Form>
       )}
-      {data && (
+      {!creating && data && (
         <>
           <Typography.Title level={5}>Bug liên kết</Typography.Title>
           <List size="small" locale={{ emptyText: 'Chưa có bug liên kết' }} dataSource={data.bugs} renderItem={(b: any) => (

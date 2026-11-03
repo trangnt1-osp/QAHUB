@@ -3,6 +3,8 @@ import PgBoss from 'pg-boss';
 import { env } from '../common/config';
 
 export const JOBS = {
+  PROJECT_IMPORT_PREVIEW: 'project-import.preview',
+  PROJECT_IMPORT_COMMIT: 'project-import.commit',
   PROCESS_RUN: 'automation.process-run',
   TEST_CASES_BULK: 'testcases.bulk',
   TEST_CASES_IMPORT: 'testcases.import',

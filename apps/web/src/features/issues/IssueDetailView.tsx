@@ -1,6 +1,6 @@
 import { fmtNumber, parseNumber } from '../../lib/number';
 import { DeleteOutlined, LinkOutlined } from '@ant-design/icons';
-import { App, Button, Card, DatePicker, Descriptions, Divider, Empty, InputNumber, List, Popconfirm, Select, Space, Tabs, Tag, Timeline, Typography } from 'antd';
+import { App, Button, Card, Collapse, DatePicker, Descriptions, Divider, Empty, InputNumber, List, Popconfirm, Select, Space, Tabs, Tag, Timeline, Typography } from 'antd';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
 import { useState } from 'react';
@@ -26,6 +26,7 @@ import { fmtDateTime, fromNow } from '../../lib/date';
 import { useAuth, usePermission } from '../auth/authStore';
 import { TriageButtons } from './TriageButtons';
 import { useSelectedIssue } from './useSelectedIssue';
+import { IssueStructureFields } from './IssueStructureFields';
 
 const projectKeyOf = (key: string) => key.slice(0, key.lastIndexOf('-'));
 
@@ -55,6 +56,7 @@ function AuthorizedIssueDetailView({ issueKey, onDeleted }: IssueDetailViewProps
   const { data: sprints = [] } = useSprints(projectKey);
   const phase = useProjectTracking(projectKey) === 'phase';
   const [busy, setBusy] = useState(false);
+  const [structureSaving, setStructureSaving] = useState(false);
   const [comment, setComment] = useState<Record<string, unknown> | null>(null);
   const [descDraft, setDescDraft] = useState<Record<string, unknown> | null>(null);
   const [editorKey, setEditorKey] = useState(0);
@@ -187,6 +189,19 @@ function AuthorizedIssueDetailView({ issueKey, onDeleted }: IssueDetailViewProps
                 <Descriptions.Item label="Tạo lúc">{fmtDateTime(issue.createdAt)}</Descriptions.Item>
                 <Descriptions.Item label="Cập nhật">{fmtDateTime(issue.updatedAt)}</Descriptions.Item>
               </Descriptions>
+              <Collapse size="small" style={{ marginTop: 12 }} defaultActiveKey={['structure']} items={[{ key: 'structure', label: 'Epic / Module / Function', children: canEdit
+                ? <IssueStructureFields projectKey={projectKey} disabled={structureSaving} showEpic={issue.type !== 'epic' && issue.type !== 'subtask'}
+                    value={{ parentKey: issue.parent?.key, moduleIds: issue.explicitModuleIds ?? issue.moduleIds ?? [], functionIds: issue.functionIds ?? [] }}
+                    onChange={async (value) => {
+                      if (structureSaving) return;
+                      setStructureSaving(true);
+                      try { await patch({ moduleIds: value.moduleIds, functionIds: value.functionIds, ...(issue.type !== 'epic' && issue.type !== 'subtask' ? { parentKey: value.parentKey ?? null } : {}) }); }
+                      finally { setStructureSaving(false); }
+                    }} />
+                : <Space direction="vertical">
+                    <div><Typography.Text type="secondary">Module: </Typography.Text>{issue.modules?.length ? issue.modules.map((module) => <Tag key={module.id}>{module.code} · {module.name}</Tag>) : '—'}</div>
+                    <div><Typography.Text type="secondary">Function: </Typography.Text>{issue.functions?.length ? issue.functions.map((fn) => <Tag key={fn.id}>{fn.code} · {fn.name}</Tag>) : '—'}</div>
+                  </Space> }]} />
               {(canDeleteAny || (canDeleteOwn && issue.reporter?.id === user?.id)) && (
                 <Popconfirm title="Xóa item này?" okText="Xóa" cancelText="Hủy" okButtonProps={{ danger: true }} onConfirm={async () => { if (!(canDeleteAny || (canDeleteOwn && issue.reporter?.id === user?.id))) return; try { await deleteIssue(issueKey); message.success('Đã xóa'); await refresh(); onDeleted?.(); } catch (e) { message.error(errorMessage(e)); } }}>
                   <Button danger type="text" icon={<DeleteOutlined />} style={{ marginTop: 8 }}>Xóa</Button>

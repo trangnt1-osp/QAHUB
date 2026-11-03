@@ -11,6 +11,8 @@ export class CreateRequirementDto {
   @IsIn(REQUIREMENT_KINDS as unknown as string[]) kind: RequirementKind;
   @IsString() @MinLength(1) code: string;
   @IsString() @MinLength(1) name: string;
+  @IsOptional() @IsInt() moduleId?: number | null;
+  @IsOptional() @IsArray() @IsInt({ each: true }) moduleIds?: number[];
   @IsOptional() @IsString() traceRef?: string;
   @IsOptional() @IsArray() @IsString({ each: true }) sources?: string[];
   /** function: các epic chứa nó */
@@ -22,6 +24,8 @@ export class CreateRequirementDto {
 export class UpdateRequirementDto {
   @IsOptional() @IsString() @MinLength(1) code?: string;
   @IsOptional() @IsString() @MinLength(1) name?: string;
+  @IsOptional() @IsInt() moduleId?: number | null;
+  @IsOptional() @IsArray() @IsInt({ each: true }) moduleIds?: number[];
   @IsOptional() @IsString() traceRef?: string | null;
   @IsOptional() @IsArray() @IsString({ each: true }) sources?: string[];
   @IsOptional() @IsArray() @IsInt({ each: true }) epicIds?: number[];
@@ -38,6 +42,7 @@ export class TestStepDto {
 
 export class TestCaseFilterQuery {
   @IsOptional() @IsString() functionId?: string;
+  @IsOptional() @IsString() moduleId?: string;
   @IsOptional() @IsString() epicId?: string;
   @IsOptional() @IsString() q?: string;
   @IsOptional() @csv() @IsArray() status?: string[];
@@ -107,6 +112,7 @@ export class LinkBugDto {
 
 export class SummaryQuery {
   @IsOptional() @IsString() functionId?: string;
+  @IsOptional() @IsString() moduleId?: string;
   @IsOptional() @IsString() epicId?: string;
 }
 

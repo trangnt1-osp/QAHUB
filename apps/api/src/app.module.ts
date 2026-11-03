@@ -22,6 +22,7 @@ import { TestCasesModule } from './test-cases/test-cases.module';
 import { UsersModule } from './users/users.module';
 import { WorkflowsModule } from './workflows/workflows.module';
 import { RolesModule } from './roles/roles.module';
+import { ProjectImportModule } from './project-import/project-import.module';
 
 @Module({
   imports: [
@@ -54,6 +55,7 @@ import { RolesModule } from './roles/roles.module';
     JobsModule,
     IngestModule,
     TestCasesModule,
+    ProjectImportModule,
   ],
 })
 export class AppModule {}

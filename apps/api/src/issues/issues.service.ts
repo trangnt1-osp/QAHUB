@@ -1,3 +1,4 @@
+import { guardEpicDeletion, syncIssueStructure } from './issue-structure';
 import { Injectable } from '@nestjs/common';
 import { ERROR_CODES, type Permission, ProjectRole as ProjectRoleName } from '@ospm/shared';
 import { Prisma } from '@prisma/client';
@@ -42,6 +43,16 @@ export class IssuesService {
       and.push({ OR: [...(ids.length ? [{ assigneeId: { in: ids.map((v) => parseId(v)) } }] : []), ...(q.assigneeIds.includes('unassigned') ? [{ assigneeId: null }] : [])] });
     }
     if (q.labelIds?.length) and.push({ labels: { some: { labelId: { in: q.labelIds.map((v) => parseId(v)) } } } });
+    if (q.moduleId) {
+      const moduleId = parseId(q.moduleId);
+      const scope: Prisma.IssueWhereInput = { OR: [{ modules: { some: { moduleId } } }, { functions: { some: { function: { moduleId, deletedAt: null } } } }, { epicRequirement: { modules: { some: { moduleId } } } }, { epicRequirement: { epicLinks: { some: { function: { moduleId, deletedAt: null } } } } }] };
+      and.push({ OR: [scope, { type: 'subtask', parent: { ...scope, deletedAt: null } }] });
+    }
+    if (q.functionId) {
+      const functionId=parseId(q.functionId);
+      const scope: Prisma.IssueWhereInput={OR:[{functions:{some:{functionId}}},{epicRequirement:{epicLinks:{some:{functionId}}}}]};
+      and.push({ OR: [scope, { type: 'subtask', parent: { ...scope, deletedAt: null } }] });
+    }
     if (q.epicId) and.push({ OR: [{ parentId: parseId(q.epicId) }, { parent: { parentId: parseId(q.epicId) } }] });
     if (q.sprintId) and.push({ sprintId: q.sprintId === 'backlog' ? null : parseId(q.sprintId) });
     if (q.source) and.push({ source: q.source });
@@ -149,9 +160,10 @@ export class IssuesService {
         },
         include: issueInclude,
       });
+      await syncIssueStructure(tx, created.id, project.id, dto.moduleIds, dto.functionIds);
       await recordStatusChange(tx, created.id, null, created.statusId, actor.id);
       await this.activity.log({ projectId: project.id, entity: 'issue', entityId: issueKeyOf(project.key, number), action: 'created', actorId: actor.id, changes: { title: [null, created.title], status: [null, created.status.name] } }, tx);
-      return created;
+      return tx.issue.findUniqueOrThrow({ where: { id: created.id }, include: issueInclude });
     });
     return toIssueDto(issue, project.key);
   }
@@ -178,6 +190,7 @@ export class IssuesService {
         set('assignee', issue.assigneeId, dto.assigneeId === null ? null : BigInt(dto.assigneeId), 'assigneeId');
       }
       if (dto.type !== undefined && dto.type !== issue.type) {
+        if (issue.type === 'epic') throw unprocessable(ERROR_CODES.VALIDATION_ERROR, 'Không thể đổi loại Epic dùng chung');
         const hasChildren = await tx.issue.count({ where: { parentId: issue.id, deletedAt: null } });
         if (hasChildren) throw unprocessable(ERROR_CODES.VALIDATION_ERROR, 'Không đổi loại item đang có item con');
         set('type', issue.type, dto.type);
@@ -196,9 +209,19 @@ export class IssuesService {
           (data as any).rank = await rankAtEnd(tx, issue.projectId, sprintId);
         }
       }
+      if(dto.moduleIds !== undefined || dto.functionIds !== undefined) {
+        await syncIssueStructure(tx, issue.id, issue.projectId, dto.moduleIds, dto.functionIds);
+        const updated = await findIssueByKey(tx, issueKey);
+        const ids = (values: bigint[]) => values.map(String).sort();
+        const beforeDto=toIssueDto(issue,issue.project.key), afterDto=toIssueDto(updated,issue.project.key);
+        const beforeModules=ids(beforeDto.explicitModuleIds), afterModules=ids(afterDto.explicitModuleIds);
+        const beforeFunctions=ids(beforeDto.functionIds), afterFunctions=ids(afterDto.functionIds);
+        if(beforeModules.join(',') !== afterModules.join(',')) changes.modules=[beforeModules,afterModules];
+        if(beforeFunctions.join(',') !== afterFunctions.join(',')) changes.functions=[beforeFunctions,afterFunctions];
+      }
       if (dto.labelIds !== undefined) await this.syncLabels(tx, issue.id, issue.projectId, dto.labelIds.map((i) => BigInt(i)), changes);
 
-      if (Object.keys(data).length === 0 && !('labels' in changes)) return issue;
+      if (Object.keys(data).length === 0 && Object.keys(changes).length === 0) return issue;
       const upd = await tx.issue.updateMany({ where: { id: issue.id, version: dto.version }, data: { ...data, version: { increment: 1 }, updatedAt: new Date() } });
       if (upd.count === 0) throw this.versionConflict(issue.version);
       await this.activity.log({ projectId: issue.projectId, entity: 'issue', entityId: issueKey, action: 'updated', actorId: actor.id, changes }, tx);
@@ -361,11 +384,17 @@ export class IssuesService {
         const changes: Record<string, [unknown, unknown]> = {};
         const extra: Prisma.IssueUncheckedUpdateManyInput = {};
         if (dto.set.deleted) {
+          if (issue.type === 'epic') await guardEpicDeletion(tx, issue.id);
           if (!(project.permissions?.includes('issue.delete.any') ?? project.role === 'admin') && issue.reporterId !== actor.id) throw forbidden('Chỉ xóa được item do bạn tạo');
           await tx.issue.update({ where: { id: issue.id }, data: { deletedAt: new Date(), version: { increment: 1 } } });
           await this.activity.log({ projectId: project.id, entity: 'issue', entityId: key, action: 'deleted', actorId: actor.id }, tx);
           out.push(key);
           continue;
+        }
+        if(dto.set.moduleIds !== undefined || dto.set.functionIds !== undefined) {
+          await syncIssueStructure(tx,issue.id,project.id,dto.set.moduleIds,dto.set.functionIds);
+          const before=toIssueDto(issue,project.key);
+          changes.structure=[{moduleIds:before.explicitModuleIds.map(String),functionIds:before.functionIds.map(String)},{moduleIds:dto.set.moduleIds,functionIds:dto.set.functionIds}];
         }
         if (dto.set.priority) { extra.priority = dto.set.priority; changes.priority = [issue.priority, dto.set.priority]; }
         if (dto.set.assigneeId !== undefined) {
@@ -399,7 +428,7 @@ export class IssuesService {
             continue;
           }
         }
-        if (Object.keys(extra).length || changes.labels) {
+        if (Object.keys(extra).length || Object.keys(changes).length) {
           await tx.issue.update({ where: { id: issue.id }, data: { ...(extra as any), version: { increment: 1 } } });
           await this.activity.log({ projectId: project.id, entity: 'issue', entityId: key, action: 'updated', actorId: actor.id, changes }, tx);
         }
@@ -413,6 +442,7 @@ export class IssuesService {
     const issue = await findIssueByKey(this.prisma, issueKey);
     if (!(actor.permissions?.includes('issue.delete.any') ?? role === 'admin') && issue.reporterId !== actor.id) throw forbidden('Chỉ xóa được item do bạn tạo');
     await this.prisma.$transaction(async (tx) => {
+      if (issue.type === 'epic') await guardEpicDeletion(tx, issue.id);
       await tx.issue.update({ where: { id: issue.id }, data: { deletedAt: new Date(), version: { increment: 1 } } });
       await this.activity.log({ projectId: issue.projectId, entity: 'issue', entityId: issueKey, action: 'deleted', actorId: actor.id }, tx);
     });

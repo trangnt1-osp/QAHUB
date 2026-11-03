@@ -5,6 +5,7 @@ import type { IssueSource, IssueType, Priority, StatusCategory } from '@ospm/sha
 export interface UserBrief { id: number; displayName: string; avatarUrl?: string | null }
 export interface StatusBrief { id: number; name: string; category: StatusCategory; color: string }
 export interface LabelBrief { id: number; name: string; color: string; isSystem: boolean }
+export interface StructureBrief { id: number; code: string; name: string; moduleId?: number | null }
 
 export interface IssueRow {
   id: number; key: string; number: number; projectId: number; type: IssueType; title: string; priority: Priority; source: IssueSource;
@@ -12,6 +13,7 @@ export interface IssueRow {
   parent: { id: number; key: string; title: string; type: IssueType } | null; sprintId: number | null; rank: string;
   estimateMinutes: number | null; dueDate: string | null; version: number; occurrenceCount: number; createdAt: string; updatedAt: string;
   description?: unknown; resolution?: string | null; createdByApiKey?: { id: string; name: string } | null; lastSeenAt?: string | null; firstSeenAt?: string | null;
+  moduleIds?: number[]; explicitModuleIds?: number[]; functionIds?: number[]; modules?: StructureBrief[]; functions?: StructureBrief[];
 }
 
 export interface Transition { statusId: number; name: string; category: StatusCategory; color: string; label: string | null }

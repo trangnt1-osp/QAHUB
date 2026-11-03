@@ -8,7 +8,7 @@ import { usePermission } from '../auth/authStore';
 import { waitForJob } from './jobs';
 import { fmtNumber } from '../../lib/number';
 
-export function ExportButton({ projectKey, functionId }: { projectKey: string; functionId?: string }) {
+export function ExportButton({ projectKey, functionId, epicId, moduleId }: { projectKey: string; functionId?: string; epicId?: string; moduleId?: string }) {
   const canExport = usePermission(projectKey, 'testcase.export');
   const [busy, setBusy] = useState(false);
   const { message } = App.useApp();
@@ -17,7 +17,7 @@ export function ExportButton({ projectKey, functionId }: { projectKey: string; f
       if (!canExport) return;
       setBusy(true);
       try {
-        const { jobId } = await exportTestCases(projectKey, functionId ? ({ functionId } as any) : undefined);
+        const { jobId } = await exportTestCases(projectKey, { functionId, epicId, moduleId } as any);
         const job = await waitForJob(jobId);
         if (job.downloadUrl) window.open(job.downloadUrl, '_blank');
         else message.warning('Không có link tải');

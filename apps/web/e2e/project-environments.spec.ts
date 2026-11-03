@@ -1,0 +1,50 @@
+import { expect, test } from '@playwright/test';
+import { login } from './helpers';
+
+test('project information manages environments with consistent view/edit forms', async ({ page }) => {
+  await login(page, 'admin@local.test', 'Admin@12345');
+  const session = await (await page.request.post('/api/v1/auth/login', { data: { email: 'admin@local.test', password: 'Admin@12345' } })).json();
+  const headers = { Authorization: `Bearer ${session.accessToken}` };
+  const templates = await (await page.request.get('/api/v1/workflow-templates', { headers })).json();
+  expect((await page.request.post('/api/v1/projects', { headers, data: { key: 'ENVUI', name: 'Environment UI', workflowTemplateId: templates[0].id } })).ok()).toBeTruthy();
+  await page.goto('/projects/ENVUI/info');
+  await expect(page.getByText('Chưa có môi trường', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: /Thêm môi trường/ }).click();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog.getByLabel('Tên môi trường')).toBeEnabled();
+  await dialog.getByLabel('Tên môi trường').fill('Customer UAT');
+  await dialog.getByLabel('URL ứng dụng').fill('javascript:alert(1)');
+  await dialog.getByRole('button', { name: 'Lưu', exact: true }).click();
+  await expect(dialog.getByText(/Nhập URL http/)).toBeVisible();
+  await dialog.getByLabel('URL ứng dụng').fill('https://uat.example.test');
+  await dialog.getByLabel('URL API').fill('https://api-uat.example.test');
+  await dialog.getByLabel('Phiên bản / Build').fill('v1.2');
+  await dialog.getByLabel('Ghi chú').fill('Connect to VPN');
+  for (const [label, option] of [['Loại môi trường', 'UAT'], ['Người phụ trách', 'System Admin']]) {
+    await dialog.getByLabel(label, { exact: true }).press('ArrowDown');
+    await page.locator('.ant-select-dropdown:visible .ant-select-item-option-content').getByText(option, { exact: true }).click();
+  }
+  await dialog.getByRole('button', { name: 'Lưu', exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  const row = page.getByRole('row').filter({ hasText: 'Customer UAT' });
+  await expect(row).toContainText('System Admin');
+  await expect(row.getByRole('link', { name: 'https://uat.example.test', exact: true })).toHaveAttribute('href', 'https://uat.example.test');
+  await row.getByRole('button', { name: 'Xem môi trường', exact: true }).click();
+  await expect(dialog.getByLabel('Tên môi trường')).toHaveValue('Customer UAT');
+  await expect(dialog.getByLabel('Tên môi trường')).toBeDisabled();
+  await expect(dialog.getByLabel('Ghi chú')).toHaveValue('Connect to VPN');
+  await dialog.getByRole('button', { name: 'Đóng', exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  await row.getByRole('button', { name: 'Sửa môi trường', exact: true }).click();
+  await expect(dialog.getByLabel('Tên môi trường')).toBeEnabled();
+  await dialog.getByLabel('Phiên bản / Build').fill('v1.3');
+  await dialog.getByLabel('Trạng thái', { exact: true }).press('ArrowDown');
+  await page.locator('.ant-select-dropdown:visible .ant-select-item-option-content').getByText('Bảo trì', { exact: true }).click();
+  await dialog.getByRole('button', { name: 'Lưu', exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(row).toContainText('v1.3');
+  await expect(row).toContainText('Bảo trì');
+  await row.getByRole('button', { name: 'Xóa môi trường', exact: true }).click();
+  await page.getByRole('button', { name: 'Xóa', exact: true }).click();
+  await expect(page.getByText('Chưa có môi trường', { exact: true })).toBeVisible();
+});

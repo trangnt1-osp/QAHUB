@@ -3,7 +3,7 @@ import { ColDef, GridApi, GridReadyEvent, IDatasource, themeQuartz, CellValueCha
 import { App } from 'antd';
 import { Link } from 'react-router-dom';
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef } from 'react';
-import { TEST_CASE_PRIORITIES, TEST_CASE_STATUSES } from '@ospm/shared';
+import { preconditionsText, TEST_CASE_PRIORITIES, TEST_CASE_STATUSES } from '@ospm/shared';
 import { getTestCase, listTestCaseIds, listTestCases, updateTestCase } from '../../api/generated/api';
 import { errorCode, errorMessage } from '../../api/http';
 import type { TestCaseRow } from '../../api/models';
@@ -11,7 +11,7 @@ import { fmtDateTime } from '../../lib/date';
 import { fmtNumber } from '../../lib/number';
 import { PRIORITY_LABEL, STATUS_HEX, STATUS_LABEL } from './labels';
 
-export interface GridFilters { functionId?: string; epicId?: string; q?: string; status?: string[]; categoryId?: string[]; priority?: string[] }
+export interface GridFilters { functionId?: string; epicId?: string; moduleId?: string; q?: string; status?: string[]; categoryId?: string[]; priority?: string[] }
 export interface GridHandle { api: () => GridApi | null; updateRow: (row: Partial<TestCaseRow> & { id: number }) => void }
 
 /** Giao diện/màu sắc AG Grid khớp Ant Design (mục 10). */
@@ -85,7 +85,7 @@ export const TestCaseGrid = forwardRef<GridHandle, Props>(function TestCaseGrid(
     { colId: 'category', headerName: 'Category', width: 150, editable: canEdit, valueGetter: (p: any) => p.data?.categoryName ?? '', cellEditor: 'agSelectCellEditor', cellEditorParams: { values: ['', ...catNames] },
       valueSetter: (p: ValueSetterParams<TestCaseRow>) => { const c = categories.find((x) => x.name === p.newValue); p.data.categoryName = c?.name ?? null; p.data.categoryId = c?.id ?? null; return true; } },
     { colId: 'title', field: 'title', headerName: 'Checklist Item', flex: 1, minWidth: 280, editable: canEdit, tooltipField: 'title' },
-    { colId: 'preconditions', field: 'preconditions', headerName: 'Pre-conditions', width: 220, tooltipField: 'preconditions' },
+    { colId: 'preconditions', field: 'preconditions', headerName: 'Pre-conditions', width: 220, valueFormatter: (p: ValueFormatterParams) => preconditionsText(p.value), tooltipValueGetter: (p: { value?: string | null }) => preconditionsText(p.value) },
     { colId: 'stepCount', field: 'stepCount', headerName: 'Số bước', width: 90, type: 'rightAligned', valueFormatter: (p: ValueFormatterParams) => fmtNumber(p.value) },
     { colId: 'status', field: 'status', headerName: 'Status', width: 130, sortable: true, editable: canEdit, cellRenderer: StatusCell, cellEditor: 'agSelectCellEditor', cellEditorParams: { values: [...TEST_CASE_STATUSES] } },
     { colId: 'bugs', headerName: 'Link Bug', width: 170, cellRenderer: BugCell },
@@ -102,7 +102,7 @@ export const TestCaseGrid = forwardRef<GridHandle, Props>(function TestCaseGrid(
     let total = 0;
     try {
       do {
-        const r = await listTestCases(projectKey, { functionId: filtersRef.current.functionId, limit: 500, cursor } as any);
+        const r = await listTestCases(projectKey, { functionId: filtersRef.current.functionId, epicId: filtersRef.current.epicId, moduleId: filtersRef.current.moduleId, limit: 500, cursor } as any);
         if (seq !== loadSeq.current) return;
         api.applyTransactionAsync({ add: r.items });
         total += r.items.length;
@@ -154,7 +154,7 @@ export const TestCaseGrid = forwardRef<GridHandle, Props>(function TestCaseGrid(
     if (clientSide) {
       matchIds.current = null;
       const f = filtersRef.current;
-      if (f.q) { try { matchIds.current = new Set((await listTestCaseIds(projectKey, { functionId: f.functionId, q: f.q } as any)).ids); } catch { /* bỏ qua */ } }
+      if (f.q) { try { matchIds.current = new Set((await listTestCaseIds(projectKey, { functionId: f.functionId, epicId: f.epicId, moduleId: f.moduleId, q: f.q } as any)).ids); } catch { /* bỏ qua */ } }
       await loadAll(api);
       api.onFilterChanged();
     } else {

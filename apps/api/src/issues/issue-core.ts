@@ -12,6 +12,9 @@ export const issueInclude = {
   reporter: { select: userBrief },
   apiKey: { select: { id: true, name: true } },
   labels: { include: { label: true } },
+  modules: { include: { module: true } },
+  functions: { include: { function: { include: { module: true } } } },
+  epicRequirement: { include: { modules: { include: { module: true } }, epicLinks: { where: { function: { deletedAt: null } }, include: { function: { include: { module: true } } } } } },
   parent: { select: { id: true, number: true, title: true, type: true } },
 } satisfies Prisma.IssueInclude;
 
@@ -21,12 +24,22 @@ export const issueKeyOf = (projectKey: string, number: bigint | number) => `${pr
 
 /** Chuẩn hóa một dòng issue thành JSON trả về cho client. */
 export function toIssueDto(row: IssueRow, projectKey: string) {
-  const { labels, parent, apiKey, ...rest } = row;
+  const { labels, parent, apiKey, modules: itemModules, functions: itemFunctions, epicRequirement, ...rest } = row;
+  const modules = row.type === 'epic' && epicRequirement
+    ? [...new Map([...epicRequirement.modules, ...itemModules].map(m => [m.moduleId, m])).values()]
+    : itemModules;
+  const functions = row.type === 'epic' && epicRequirement
+    ? [...new Map([...epicRequirement.epicLinks, ...itemFunctions].map(f => [f.functionId, f])).values()]
+    : itemFunctions;
+  const relatedModules = [...new Map([...modules.map(m => m.module), ...functions.flatMap(f => f.function.module ? [f.function.module] : [])].map(m => [m.id, m])).values()];
   return {
     ...rest,
     key: issueKeyOf(projectKey, row.number),
     labels: labels.map((l) => ({ id: l.label.id, name: l.label.name, color: l.label.color, isSystem: l.label.isSystem })),
     parent: parent ? { id: parent.id, key: issueKeyOf(projectKey, parent.number), title: parent.title, type: parent.type } : null,
+    modules: relatedModules.map(m => ({ id: m.id, code: m.code, name: m.name })),
+    functions: functions.map(({ function: f }) => ({ id: f.id, code: f.code, name: f.name, moduleId: f.moduleId })),
+    moduleIds: relatedModules.map(m => m.id), explicitModuleIds: modules.map(m => m.moduleId), functionIds: functions.map(f => f.functionId),
     createdByApiKey: apiKey,
   };
 }

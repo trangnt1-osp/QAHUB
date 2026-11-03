@@ -1,0 +1,53 @@
+import { App } from 'antd';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
+import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import { TestCaseDrawer } from './TestCaseDrawer';
+import { createTestCase } from '../../api/generated/api';
+
+vi.mock('../auth/authStore', () => ({ usePermission: () => true }));
+vi.mock('../../api/hooks', () => ({ useTestCategories: () => ({ data: [] }) }));
+vi.mock('./PreconditionsEditor', () => ({ PreconditionsEditor: ({ value, onChange, disabled }: { value?: string; onChange?: (value: string) => void; disabled?: boolean }) => <input aria-label="Pre-conditions" value={value ?? ''} disabled={disabled} onChange={e => onChange?.(e.target.value)} /> }));
+vi.mock('../../api/generated/api', () => ({ createTestCase: vi.fn(), getTestCase: vi.fn(), updateTestCase: vi.fn(), linkTestCaseBug: vi.fn(), unlinkTestCaseBug: vi.fn() }));
+beforeEach(() => {
+  const getStyle = window.getComputedStyle.bind(window);
+  vi.spyOn(window, 'getComputedStyle').mockImplementation((element) => getStyle(element));
+});
+afterEach(() => vi.restoreAllMocks());
+
+it('creates with the detail layout, saves all fields and resets canceled drafts', async () => {
+  const created = vi.fn();
+  vi.mocked(createTestCase).mockResolvedValue({ id: 101, code: 'FN-001' } as any);
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const props = { projectKey: 'QA', id: null, creating: true, functions: [{ id: 7, code: 'FN', name: 'Login' }], defaultFunctionId: '7', onClose: vi.fn(), onSaved: vi.fn(), onCreated: created };
+  const view = (creating: boolean) => <QueryClientProvider client={client}><MemoryRouter><App><TestCaseDrawer {...props} creating={creating} /></App></MemoryRouter></QueryClientProvider>;
+  const result = render(view(true));
+  let dialog = await screen.findByRole('dialog');
+  await waitFor(() => expect(within(dialog).getByLabelText('Checklist Item')).toBeEnabled());
+  expect(within(dialog).getByLabelText('Pre-conditions')).toBeVisible();
+  expect(within(dialog).getByLabelText('Notes')).toBeVisible();
+  expect(within(dialog).getByText('Các bước & kết quả mong đợi')).toBeVisible();
+  expect(within(dialog).queryByText('Bug liên kết')).not.toBeInTheDocument();
+  fireEvent.change(within(dialog).getByLabelText('Checklist Item'), { target: { value: 'Discarded draft' } });
+  result.rerender(view(false));
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  result.rerender(view(true));
+  dialog = await screen.findByRole('dialog');
+  await waitFor(() => expect(within(dialog).getByLabelText('Checklist Item')).toBeEnabled());
+  expect(within(dialog).getByLabelText('Checklist Item')).toHaveValue('');
+  fireEvent.change(within(dialog).getByLabelText('Checklist Item'), { target: { value: 'Login succeeds' } });
+  fireEvent.change(within(dialog).getByLabelText('Pre-conditions'), { target: { value: 'Active user' } });
+  fireEvent.change(within(dialog).getByLabelText('Notes'), { target: { value: 'Check desktop' } });
+  fireEvent.change(within(dialog).getByLabelText('Tag automation'), { target: { value: '@login' } });
+  fireEvent.click(within(dialog).getByRole('button', { name: /Thêm bước/ }));
+  fireEvent.change(within(dialog).getByPlaceholderText('Bước thực hiện'), { target: { value: 'Enter credentials' } });
+  fireEvent.change(within(dialog).getByPlaceholderText('Expected'), { target: { value: 'Dashboard appears' } });
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Lưu và thêm mới' }));
+  await waitFor(() => expect(created).toHaveBeenCalledWith({ id: 101, code: 'FN-001' }));
+  expect(createTestCase).toHaveBeenCalledWith('QA', expect.objectContaining({ functionId: 7, title: 'Login succeeds', preconditions: 'Active user', notes: 'Check desktop', automationTag: '@login', priority: 'medium', status: 'not_started', steps: [{ id: expect.any(String), action: 'Enter credentials', expected: 'Dashboard appears' }] }));
+  await waitFor(() => expect(within(dialog).getByLabelText('Checklist Item')).toHaveValue(''));
+  expect(within(dialog).getByLabelText('Notes')).toHaveValue('');
+  expect(within(dialog).getByLabelText('Pre-conditions')).toHaveValue('');
+  expect(within(dialog).queryByPlaceholderText('Expected')).not.toBeInTheDocument();
+}, 15_000);

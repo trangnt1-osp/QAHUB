@@ -7,6 +7,7 @@ import { UserAvatar } from '../../components/UserAvatar';
 import { fmtDate } from '../../lib/date';
 import { ProjectMembers } from './ProjectMembers';
 import { ProjectPeriods } from './ProjectPeriods';
+import { ProjectEnvironments } from './ProjectEnvironments';
 import { usePermission } from '../auth/authStore';
 
 export default function ProjectInfoPage() {
@@ -27,6 +28,7 @@ export default function ProjectInfoPage() {
             { key: 'description', label: 'Mô tả', children: project.description || '—', span: 2 },
           ]} />
         </Card>
+        <ProjectEnvironments projectKey={projectKey} />
         {viewPeriods && <ProjectPeriods projectKey={projectKey} trackingMode={project.trackingMode} />}
         {viewMembers && <ProjectMembers projectKey={projectKey} />}
       </Space>}

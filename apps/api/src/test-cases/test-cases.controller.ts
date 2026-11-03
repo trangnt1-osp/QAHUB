@@ -152,8 +152,8 @@ export class TestCasesController {
   }
 
   @ProjectRole('viewer') @Post('projects/:projectKey/test-cases/export') @HttpCode(202)
-  async exportTestCases(@CurrentProject() p: ProjectContext, @Query('functionId') functionId: string | undefined, @CurrentUser() u: AuthUser) {
-    const jobId = await this.excel.enqueueExport(p.id, u.id, functionId);
+  async exportTestCases(@CurrentProject() p: ProjectContext, @Query('functionId') functionId: string | undefined, @CurrentUser() u: AuthUser, @Query('moduleId') moduleId?: string, @Query('epicId') epicId?: string) {
+    const jobId = await this.excel.enqueueExport(p.id, u.id, functionId, moduleId, epicId);
     return { jobId };
   }
 }

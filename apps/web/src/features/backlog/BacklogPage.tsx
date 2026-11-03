@@ -29,6 +29,8 @@ import { fmtDate, fmtEstimate } from '../../lib/date';
 import { useAuth, usePermission } from '../auth/authStore';
 import { useSelectedIssue } from '../issues/useSelectedIssue';
 import { CompleteSprintModal, EditSprintModal, StartSprintModal } from './SprintModals';
+import { useProjectStructure, type ProjectStructure } from '../project-structure';
+import { ProjectImportButton } from '../project-import';
 
 interface SprintBlock { sprint: Sprint; issues: IssueRow[]; totals: { total: number; visible: number; estimate: { todo: number; in_progress: number; done: number } } }
 interface Layout { sprints: SprintBlock[]; backlog: IssueRow[]; backlogTotal: number; nextCursor: string | null }
@@ -42,7 +44,7 @@ type Row =
   | { kind: 'pagination'; id: string; container: string; total: number };
 
 const BACKLOG = 'backlog';
-const FILTER_KEYS = ['q', 'assigneeIds', 'epicId', 'type', 'labelIds', 'source', 'statusIds'] as const;
+const FILTER_KEYS = ['q', 'assigneeIds', 'epicId', 'moduleId', 'functionId', 'sprintId', 'type', 'labelIds', 'source', 'statusIds'] as const;
 
 export default function BacklogPage() {
   const { projectKey = '' } = useParams();
@@ -51,6 +53,7 @@ export default function BacklogPage() {
   const [sp, setSp] = useSearchParams();
   const canEdit = usePermission(projectKey, 'issue.edit');
   const canCreate = usePermission(projectKey, 'issue.create');
+  const canImport = usePermission(projectKey, 'issue.import');
   const canTransition = usePermission(projectKey, 'issue.transition');
   const canCreatePeriod = usePermission(projectKey, 'period.create');
   const canEditPeriod = usePermission(projectKey, 'period.edit');
@@ -62,6 +65,7 @@ export default function BacklogPage() {
   const user = useAuth((state) => state.user);
   const { data: members = [] } = useMembers(projectKey);
   const { data: wf } = useWorkflow(projectKey);
+  const structure = useProjectStructure(projectKey);
   const qc = useQueryClient();
   const { message, modal } = App.useApp();
   const { select } = useSelectedIssue();
@@ -76,6 +80,7 @@ export default function BacklogPage() {
     const n = new URLSearchParams(p);
     const s = Array.isArray(v) ? v.join(',') : v;
     if (s) n.set(k, s); else n.delete(k);
+    if (k === 'moduleId') n.delete('functionId');
     return n;
   }, { replace: true });
   const hasFilters = Object.keys(filters).length > 0;
@@ -276,7 +281,8 @@ export default function BacklogPage() {
   return (
     <div className="page" style={{ paddingBottom: 0 }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
-        <div style={{ minWidth: 0 }}><FilterBar projectKey={projectKey} filters={filters} setFilter={setFilter} clear={() => setSp({}, { replace: true })} hasFilters={hasFilters} members={members.map((m) => m.user)} /></div>
+        <div style={{ minWidth: 0 }}><FilterBar projectKey={projectKey} filters={filters} setFilter={setFilter} clear={() => setSp({}, { replace: true })} hasFilters={hasFilters} members={members.map((m) => m.user)} structure={structure.data} loading={structure.isLoading} /></div>
+        <ProjectImportButton projectKey={projectKey} scope="backlog" templateKind="backlog" canImport={canImport} />
         {canCreatePeriod && <Button type="primary" icon={<PlusOutlined />} loading={creatingSprint} onClick={addSprint} style={{ flexShrink: 0 }}>Tạo {periodLabel}</Button>}
       </div>
       {selected.size > 0 && (canEdit || canTransition || canDeleteOwn || canDeleteAny) && <BulkBar canEdit={canEdit} canTransition={canTransition} canDelete={canDeleteAny || (canDeleteOwn && [...selected].every((id) => layout?.sprints.flatMap((b) => b.issues).concat(layout.backlog).find((issue) => issue.id === id)?.reporter?.id === user?.id))} projectKey={projectKey} keys={[...selected].map((id) => layout!.sprints.flatMap((b) => b.issues).concat(layout!.backlog).find((i) => i.id === id)?.key).filter(Boolean) as string[]} onDone={() => { setSelected(new Set()); void qc.invalidateQueries(); }} statuses={wf?.statuses.filter((s) => !s.isArchived) ?? []} />}
@@ -310,7 +316,7 @@ export default function BacklogPage() {
                         {r.container === BACKLOG && loadError && <span role="alert">{loadError} <Button size="small" onClick={() => setLoadError(null)}>Retry</Button></span>}
                       </div>}
                       {r.kind === 'empty' && <EmptyDrop container={r.container} />}
-                      {r.kind === 'create' && <QuickCreate projectKey={projectKey} sprintId={r.container === BACKLOG ? undefined : Number(r.container.slice(1))} onCreated={() => qc.invalidateQueries()} />}
+                      {r.kind === 'create' && <QuickCreate projectKey={projectKey} sprintId={r.container === BACKLOG ? undefined : Number(r.container.slice(1))} parentKey={structure.data?.epics.find((epic) => String(epic.id) === filters.epicId)?.key} moduleId={filters.moduleId ? Number(filters.moduleId) : undefined} functionId={filters.functionId ? Number(filters.functionId) : undefined} onCreated={() => qc.invalidateQueries()} />}
                     </div>
                   );
                 })}
@@ -331,19 +337,27 @@ export default function BacklogPage() {
   );
 }
 
-function FilterBar({ projectKey, filters, setFilter, clear, hasFilters, members }: {
+function FilterBar({ projectKey, filters, setFilter, clear, hasFilters, members, structure, loading }: {
   projectKey: string; filters: Record<string, any>; setFilter: (k: string, v: string | string[] | undefined) => void; clear: () => void; hasFilters: boolean; members: { id: number; displayName: string }[];
+  structure?: ProjectStructure; loading?: boolean;
 }) {
   const { data: wf } = useWorkflow(projectKey);
+  const { data: periods = [] } = useSprints(projectKey);
+  const phase = useProjectTracking(projectKey) === 'phase';
   const [q, setQ] = useState<string>(filters.q ?? '');
   useEffect(() => { const t = setTimeout(() => q !== (filters.q ?? '') && setFilter('q', q || undefined), 300); return () => clearTimeout(t); }, [q]);
-  const { data: epics } = useQuery<any>({ queryKey: ['epics', projectKey], queryFn: () => listIssues(projectKey, { type: ['epic'], limit: 200 } as any), staleTime: 60_000 });
   return (
     <Space wrap style={{ marginBottom: 12 }}>
       <Input.Search placeholder="Search backlog" allowClear style={{ width: 220 }} value={q} onChange={(e) => setQ(e.target.value)} />
       <AvatarFilter users={members} value={(filters.assigneeIds ?? []).map(Number)} onChange={(ids) => setFilter('assigneeIds', ids.map(String))} />
-      <Select allowClear placeholder="Epic" style={{ width: 160 }} showSearch optionFilterProp="label" value={filters.epicId ? Number(filters.epicId) : undefined} onChange={(v) => setFilter('epicId', v ? String(v) : undefined)}
-        options={(epics?.items ?? []).map((e: IssueRow) => ({ value: e.id, label: `${e.key} ${e.title}` }))} />
+      <Select aria-label="Lọc Epic" allowClear placeholder="Epic" style={{ width: 180 }} loading={loading} showSearch optionFilterProp="label" value={filters.epicId ? Number(filters.epicId) : undefined} onChange={(v) => setFilter('epicId', v ? String(v) : undefined)}
+        options={(structure?.epics ?? []).map((epic) => ({ value: epic.id, label: `${epic.code} · ${epic.name}` }))} />
+      <Select aria-label="Lọc Module" allowClear placeholder="Module" style={{ width: 160 }} loading={loading} showSearch optionFilterProp="label" value={filters.moduleId ? Number(filters.moduleId) : undefined} onChange={(v) => setFilter('moduleId', v ? String(v) : undefined)}
+        options={(structure?.modules ?? []).map((module) => ({ value: module.id, label: `${module.code} · ${module.name}` }))} />
+      <Select aria-label="Lọc Function" allowClear placeholder="Function" style={{ width: 170 }} loading={loading} showSearch optionFilterProp="label" value={filters.functionId ? Number(filters.functionId) : undefined} onChange={(v) => setFilter('functionId', v ? String(v) : undefined)}
+        options={(structure?.functions ?? []).filter((fn) => !filters.moduleId || String(fn.moduleId) === filters.moduleId).map((fn) => ({ value: fn.id, label: `${fn.code} · ${fn.name}` }))} />
+      <Select aria-label={phase ? 'Lọc Phase' : 'Lọc Sprint'} allowClear placeholder={phase ? 'Phase' : 'Sprint'} style={{ width: 160 }} value={filters.sprintId} onChange={(value) => setFilter('sprintId', value)}
+        options={[{ value: 'backlog', label: 'Chưa phân bổ' }, ...periods.map((period) => ({ value: String(period.id), label: period.name }))]} />
       <Select mode="multiple" allowClear placeholder="Type" style={{ minWidth: 120 }} maxTagCount="responsive" value={filters.type} onChange={(v) => setFilter('type', v)} options={ISSUE_TYPES.map((t) => ({ value: t, label: ISSUE_TYPE_LABEL[t] }))} />
       <LabelSelect projectKey={projectKey} value={(filters.labelIds ?? []).map(Number)} onChange={(ids) => setFilter('labelIds', ids.map(String))} />
       <Select allowClear placeholder="Source" style={{ width: 120 }} value={filters.source} onChange={(v) => setFilter('source', v)} options={[{ value: 'manual', label: 'Manual' }, { value: 'auto', label: 'Auto' }]} />
@@ -434,7 +448,7 @@ const IssueRowView = memo(function IssueRowView({ ordinal, issue, canEdit, canTr
   );
 });
 
-function QuickCreate({ projectKey, sprintId, onCreated }: { projectKey: string; sprintId?: number; onCreated: () => void }) {
+function QuickCreate({ projectKey, sprintId, parentKey, moduleId, functionId, onCreated }: { projectKey: string; sprintId?: number; parentKey?: string; moduleId?: number; functionId?: number; onCreated: () => void }) {
   const canCreate = usePermission(projectKey, 'issue.create');
   const [active, setActive] = useState(false);
   const [title, setTitle] = useState('');
@@ -442,15 +456,17 @@ function QuickCreate({ projectKey, sprintId, onCreated }: { projectKey: string; 
   const { message } = App.useApp();
   const submit = async () => {
     if (!canCreate || !title.trim()) return;
-    try { await createIssue(projectKey, { type: type as any, title: title.trim(), sprintId }); setTitle(''); onCreated(); }
+    try { await createIssue(projectKey, { type: type as any, title: title.trim(), sprintId, parentKey: type === 'epic' ? undefined : parentKey, moduleIds: moduleId ? [moduleId] : undefined, functionIds: functionId ? [functionId] : undefined } as any); setTitle(''); onCreated(); }
     catch (e) { message.error(errorMessage(e)); }
   };
   if (!canCreate) return null;
   if (!active) return <div className="issue-row" style={{ height: '100%', boxSizing: 'border-box' }} onClick={() => setActive(true)}><PlusOutlined /> <span className="muted">Create</span></div>;
   return (
-    <div className="issue-row" style={{ height: '100%', boxSizing: 'border-box' }}>
+    <div className="issue-row" style={{ height: '100%', boxSizing: 'border-box' }} onBlur={(event) => {
+      if (!title && !event.currentTarget.contains(event.relatedTarget as Node | null)) setActive(false);
+    }}>
       <Select size="small" value={type} onChange={setType} style={{ width: 110 }} options={ISSUE_TYPES.filter((t) => t !== 'subtask').map((t) => ({ value: t, label: ISSUE_TYPE_LABEL[t] }))} />
-      <Input size="small" autoFocus placeholder="Bạn cần làm gì? (Enter để tạo)" value={title} onChange={(e) => setTitle(e.target.value)} onPressEnter={submit} onBlur={() => !title && setActive(false)} onKeyDown={(e) => e.key === 'Escape' && setActive(false)} />
+      <Input size="small" autoFocus placeholder="Bạn cần làm gì? (Enter để tạo)" value={title} onChange={(e) => setTitle(e.target.value)} onPressEnter={submit} onKeyDown={(e) => e.key === 'Escape' && setActive(false)} />
     </div>
   );
 }
