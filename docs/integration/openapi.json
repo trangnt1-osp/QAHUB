@@ -1105,6 +1105,21 @@
             }
           },
           {
+            "name": "priority",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "enum": [
+                "highest",
+                "high",
+                "medium",
+                "low",
+                "lowest"
+              ],
+              "type": "string"
+            }
+          },
+          {
             "name": "statusIds",
             "required": false,
             "in": "query",
@@ -1113,6 +1128,27 @@
               "items": {
                 "type": "string"
               }
+            }
+          },
+          {
+            "name": "statusCategory",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "enum": [
+                "open",
+                "done"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "name": "createdFrom",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "pattern": "/^\\d{4}-\\d{2}-\\d{2}$/",
+              "type": "string"
             }
           },
           {
@@ -1971,6 +2007,21 @@
             }
           },
           {
+            "name": "priority",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "enum": [
+                "highest",
+                "high",
+                "medium",
+                "low",
+                "lowest"
+              ],
+              "type": "string"
+            }
+          },
+          {
             "name": "statusIds",
             "required": false,
             "in": "query",
@@ -1979,6 +2030,27 @@
               "items": {
                 "type": "string"
               }
+            }
+          },
+          {
+            "name": "statusCategory",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "enum": [
+                "open",
+                "done"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "name": "createdFrom",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "pattern": "/^\\d{4}-\\d{2}-\\d{2}$/",
+              "type": "string"
             }
           },
           {
@@ -2091,6 +2163,21 @@
             }
           },
           {
+            "name": "priority",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "enum": [
+                "highest",
+                "high",
+                "medium",
+                "low",
+                "lowest"
+              ],
+              "type": "string"
+            }
+          },
+          {
             "name": "statusIds",
             "required": false,
             "in": "query",
@@ -2099,6 +2186,27 @@
               "items": {
                 "type": "string"
               }
+            }
+          },
+          {
+            "name": "statusCategory",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "enum": [
+                "open",
+                "done"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "name": "createdFrom",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "pattern": "/^\\d{4}-\\d{2}-\\d{2}$/",
+              "type": "string"
             }
           },
           {
