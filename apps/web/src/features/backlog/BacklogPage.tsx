@@ -350,13 +350,13 @@ function FilterBar({ projectKey, filters, setFilter, clear, hasFilters, members,
   return (
     <Space wrap style={{ marginBottom: 12 }}>
       <Input.Search placeholder="Search backlog" allowClear style={{ width: 220 }} value={q} onChange={(e) => setQ(e.target.value)} />
-      <AvatarFilter users={members} value={(filters.assigneeIds ?? []).map(Number)} onChange={(ids) => setFilter('assigneeIds', ids.map(String))} />
-      <Select aria-label="Lọc Epic" allowClear placeholder="Epic" style={{ width: 180 }} loading={loading} showSearch optionFilterProp="label" value={filters.epicId ? Number(filters.epicId) : undefined} onChange={(v) => setFilter('epicId', v ? String(v) : undefined)}
-        options={(structure?.epics ?? []).map((epic) => ({ value: epic.id, label: `${epic.code} · ${epic.name}` }))} />
-      <Select aria-label="Lọc Module" allowClear placeholder="Module" style={{ width: 160 }} loading={loading} showSearch optionFilterProp="label" value={filters.moduleId ? Number(filters.moduleId) : undefined} onChange={(v) => setFilter('moduleId', v ? String(v) : undefined)}
-        options={(structure?.modules ?? []).map((module) => ({ value: module.id, label: `${module.code} · ${module.name}` }))} />
-      <Select aria-label="Lọc Function" allowClear placeholder="Function" style={{ width: 170 }} loading={loading} showSearch optionFilterProp="label" value={filters.functionId ? Number(filters.functionId) : undefined} onChange={(v) => setFilter('functionId', v ? String(v) : undefined)}
-        options={(structure?.functions ?? []).filter((fn) => !filters.moduleId || String(fn.moduleId) === filters.moduleId).map((fn) => ({ value: fn.id, label: `${fn.code} · ${fn.name}` }))} />
+      <AvatarFilter users={members} value={(filters.assigneeIds ?? []).filter((id: string) => id !== 'unassigned').map(Number)} onChange={(ids) => setFilter('assigneeIds', ids.map(String))} />
+      <Select aria-label="Lọc Epic" allowClear placeholder="Epic" style={{ width: 180 }} loading={loading} showSearch optionFilterProp="label" value={filters.epicId === 'unassigned' ? 'unassigned' : filters.epicId ? Number(filters.epicId) : undefined} onChange={(v) => setFilter('epicId', v ? String(v) : undefined)}
+        options={[{ value: 'unassigned', label: 'Chưa gắn Epic' }, ...(structure?.epics ?? []).map((epic) => ({ value: epic.id, label: `${epic.code} · ${epic.name}` }))]} />
+      <Select aria-label="Lọc Module" allowClear placeholder="Module" style={{ width: 160 }} loading={loading} showSearch optionFilterProp="label" value={filters.moduleId === 'unassigned' ? 'unassigned' : filters.moduleId ? Number(filters.moduleId) : undefined} onChange={(v) => setFilter('moduleId', v ? String(v) : undefined)}
+        options={[{ value: 'unassigned', label: 'Chưa gắn Module' }, ...(structure?.modules ?? []).map((module) => ({ value: module.id, label: `${module.code} · ${module.name}` }))]} />
+      <Select aria-label="Lọc Function" allowClear placeholder="Function" style={{ width: 170 }} loading={loading} showSearch optionFilterProp="label" value={filters.functionId === 'unassigned' ? 'unassigned' : filters.functionId ? Number(filters.functionId) : undefined} onChange={(v) => setFilter('functionId', v ? String(v) : undefined)}
+        options={[{ value: 'unassigned', label: 'Chưa gắn Function' }, ...(structure?.functions ?? []).filter((fn) => !filters.moduleId || filters.moduleId === 'unassigned' || String(fn.moduleId) === filters.moduleId).map((fn) => ({ value: fn.id, label: `${fn.code} · ${fn.name}` }))]} />
       <Select aria-label={phase ? 'Lọc Phase' : 'Lọc Sprint'} allowClear placeholder={phase ? 'Phase' : 'Sprint'} style={{ width: 160 }} value={filters.sprintId} onChange={(value) => setFilter('sprintId', value)}
         options={[{ value: 'backlog', label: 'Chưa phân bổ' }, ...periods.map((period) => ({ value: String(period.id), label: period.name }))]} />
       <Select mode="multiple" allowClear placeholder="Type" style={{ minWidth: 120 }} maxTagCount="responsive" value={filters.type} onChange={(v) => setFilter('type', v)} options={ISSUE_TYPES.map((t) => ({ value: t, label: ISSUE_TYPE_LABEL[t] }))} />

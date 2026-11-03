@@ -1,24 +1,44 @@
 import { fmtNumber } from '../../lib/number';
-import { FilterOutlined, FullscreenOutlined } from '@ant-design/icons';
-import { Button, Card, Col, Modal, Popover, Row, Select, Space, Statistic, Typography } from 'antd';
+import { FullscreenOutlined } from '@ant-design/icons';
+import { Button, Card, Col, Empty, Modal, Row, Segmented, Select, Space, Statistic, Typography } from 'antd';
 import { useQuery } from '@tanstack/react-query';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip as RTooltip } from 'recharts';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ISSUE_TYPES } from '@ospm/shared';
 import { getProjectActivity, getSummary } from '../../api/generated/api';
-import { useMembers } from '../../api/hooks';
+import { useMembers, useProjectTracking } from '../../api/hooks';
 import type { ActivityItem } from '../../api/models';
 import { AvatarFilter } from '../../components/AvatarFilter';
 import { QueryBoundary } from '../../components/EmptyState';
-import { ISSUE_TYPE_LABEL, IssueTypeIcon } from '../../components/IssueTypeIcon';
 import { PriorityIcon } from '../../components/PriorityIcon';
 import { UserAvatar } from '../../components/UserAvatar';
 import { dayLabel, fmtDateTime } from '../../lib/date';
 import { useUi } from '../../stores/ui';
 import { useSelectedIssue } from '../issues/useSelectedIssue';
+import { BugBreakdown, type BugBreakdownRow } from './BugBreakdown';
 
 const EMPTY: number[] = [];
+
+type Scope = 'open' | 'all';
+interface DimensionRow { id: number | null; label: string; count: number }
+interface SummaryData {
+  scope: Scope;
+  cards: { total: number; highest: number; unassigned: number; createdLast7d: number };
+  statusOverview: { total: number; items: { statusId: number; name: string; category: string; color: string; count: number }[] };
+  byModule: DimensionRow[]; byEpic: DimensionRow[]; byPeriod: DimensionRow[]; byFunction: DimensionRow[];
+  byPriority: { priority: string; count: number }[];
+  recentActivity: ActivityItem[]; recentActivityNextCursor: string | null;
+}
+
+export function buildBugBacklogUrl(projectKey: string, scope: Scope, common: { assigneeIds?: number[]; source?: string }, extra: Record<string, string | number | undefined> = {}) {
+  const query = new URLSearchParams();
+  query.set('type', 'bug');
+  if (scope === 'open') query.set('statusCategory', 'open');
+  if (common.assigneeIds?.length) query.set('assigneeIds', common.assigneeIds.join(','));
+  if (common.source) query.set('source', common.source);
+  for (const [key, value] of Object.entries(extra)) if (value !== undefined) query.set(key, String(value));
+  return `/projects/${encodeURIComponent(projectKey)}/backlog?${query}`;
+}
 
 export default function SummaryPage() {
   const { projectKey = '' } = useParams();
@@ -26,62 +46,48 @@ export default function SummaryPage() {
   const { data: members = [] } = useMembers(projectKey);
   const assignees = useUi((s) => s.assigneeFilter[projectKey] ?? EMPTY);
   const setAssignees = useUi((s) => s.setAssigneeFilter);
-  const [types, setTypes] = useState<string[]>([]);
   const [source, setSource] = useState<string>();
-  const params = { assigneeIds: assignees.join(',') || undefined, type: types.join(',') || undefined, source };
-  const { data, isLoading, error, refetch } = useQuery<any>({ queryKey: ['summary', projectKey, params], queryFn: () => getSummary(projectKey, params as any) });
-
-  const goBacklog = (qs: string) => nav(`/projects/${projectKey}/backlog?${qs}`);
-  const triageIds = (data?.statusOverview.items ?? []).filter((s: any) => s.category === 'triage').map((s: any) => s.statusId).join(',');
+  const [scope, setScope] = useState<Scope>('open');
+  const trackingMode = useProjectTracking(projectKey);
+  const params = { assigneeIds: assignees.join(',') || undefined, source, scope };
+  const { data, isLoading, error, refetch } = useQuery<SummaryData>({ queryKey: ['summary', projectKey, params], queryFn: () => getSummary(projectKey, { params }) });
+  const common = { assigneeIds: assignees, source };
+  const goBacklog = (extra: Record<string, string | number | undefined> = {}) => nav(buildBugBacklogUrl(projectKey, scope, common, extra));
+  const dimensionRows = (rows: DimensionRow[]): BugBreakdownRow[] => rows.map((row) => ({ key: String(row.id ?? 'none'), label: row.label, count: row.count, value: row.id }));
 
   return (
     <div className="page">
-      <Space style={{ marginBottom: 16 }} wrap>
+      <Space style={{ marginBottom: 16, width: '100%', justifyContent: 'space-between' }} wrap>
+        <Typography.Title level={3} style={{ margin: 0 }}>Report BUG</Typography.Title>
+        <Segmented value={scope} onChange={(value) => setScope(value as Scope)} options={[{ value: 'open', label: 'Bug đang mở' }, { value: 'all', label: 'Tất cả Bug' }]} />
         <AvatarFilter users={members.map((m) => m.user)} value={assignees} onChange={(ids) => setAssignees(projectKey, ids)} />
-        <Popover trigger="click" placement="bottomLeft" title="Bộ lọc" content={
-          <Space direction="vertical" style={{ width: 240 }}>
-            <Select mode="multiple" placeholder="Loại item" style={{ width: '100%' }} value={types} onChange={setTypes} options={ISSUE_TYPES.map((t) => ({ value: t, label: ISSUE_TYPE_LABEL[t] }))} />
-            <Select allowClear placeholder="Nguồn" style={{ width: '100%' }} value={source} onChange={setSource} options={[{ value: 'manual', label: 'Manual' }, { value: 'auto', label: 'Auto' }]} />
-          </Space>
-        }>
-          <Button icon={<FilterOutlined />}>Filter{types.length || source ? ` (${fmtNumber(types.length + (source ? 1 : 0))})` : ''}</Button>
-        </Popover>
+        <Select allowClear placeholder="Nguồn" style={{ width: 130 }} value={source} onChange={setSource} options={[{ value: 'manual', label: 'Manual' }, { value: 'auto', label: 'Auto' }]} />
       </Space>
       <QueryBoundary isLoading={isLoading} error={error} refetch={refetch}>
         {data && (
           <>
             <Row gutter={[16, 16]}>
               {[
-                { v: data.cards.completedLast7d, t: 'completed', s: 'in the last 7 days' },
-                { v: data.cards.updatedLast7d, t: 'updated', s: 'in the last 7 days' },
-                { v: data.cards.createdLast7d, t: 'created', s: 'in the last 7 days' },
-                { v: data.cards.dueNext7d, t: 'due soon', s: 'in the next 7 days' },
-              ].map((c) => (
-                <Col key={c.t} xs={12} md={6}><Card><Statistic groupSeparator="." decimalSeparator="," title={<span>{c.t}<br /><span className="muted">{c.s}</span></span>} value={c.v} prefix={<span style={{ fontSize: 14 }} />} /></Card></Col>
+                { v: data.cards.total, t: scope === 'open' ? 'Tổng Bug đang mở' : 'Tổng Bug', extra: {} },
+                { v: data.cards.highest, t: 'Highest', extra: { priority: 'highest' } },
+                { v: data.cards.unassigned, t: 'Chưa phân công', extra: { assigneeIds: 'unassigned' } },
+                { v: data.cards.createdLast7d, t: 'Mới trong 7 ngày', extra: { createdFrom: new Date(Date.now() - 6 * 86400_000).toISOString().slice(0, 10) } },
+              ].map((card) => (
+                <Col key={card.t} xs={12} md={6}><Card hoverable onClick={() => goBacklog(card.extra)}><Statistic groupSeparator="." decimalSeparator="," title={card.t} value={card.v} /></Card></Col>
               ))}
             </Row>
+            {data.cards.total === 0 && <Empty style={{ margin: '24px 0' }} description="Chưa có Bug trong phạm vi đã chọn" />}
             <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
-              <Col xs={24} lg={14}>
-                <Card title="Status overview" style={{ height: '100%' }}>
-                  <StatusDonut data={data.statusOverview} onSlice={(id) => goBacklog(`statusIds=${id}`)} />
+              <Col xs={24} lg={12}>
+                <Card title="Theo trạng thái" style={{ height: '100%' }}>
+                  <StatusDonut data={data.statusOverview} onSlice={(id) => goBacklog({ statusIds: id })} />
                 </Card>
               </Col>
-              <Col xs={24} lg={10}>
-                <Card title="Manual và Auto" style={{ marginBottom: 16 }}>
-                  <Space size={32} wrap>
-                    <Statistic groupSeparator="." decimalSeparator="," title="Manual" value={data.bySource.manual} />
-                    <Statistic groupSeparator="." decimalSeparator="," title="Auto" value={data.bySource.auto} valueStyle={{ color: '#722ed1' }} />
-                    <Statistic groupSeparator="." decimalSeparator="," title="Chờ duyệt" value={data.bySource.pendingReview} />
-                  </Space>
-                  {data.bySource.pendingReview > 0 && triageIds && <div style={{ marginTop: 8 }}><Button type="primary" ghost onClick={() => goBacklog(`statusIds=${triageIds}`)}>Duyệt ngay</Button></div>}
-                </Card>
-                <Card title="Theo loại" size="small" style={{ marginBottom: 16 }}>
-                  <Bars rows={data.byType.map((r: any) => ({ label: <Space><IssueTypeIcon type={r.type} />{ISSUE_TYPE_LABEL[r.type as keyof typeof ISSUE_TYPE_LABEL]}</Space>, count: r.count }))} />
-                </Card>
-                <Card title="Theo priority" size="small">
-                  <Bars rows={data.byPriority.map((r: any) => ({ label: <PriorityIcon priority={r.priority} withLabel />, count: r.count }))} />
-                </Card>
-              </Col>
+              <Col xs={24} lg={12}><BugBreakdown title="Theo Priority" rows={data.byPriority.map((row) => ({ key: row.priority, label: <PriorityIcon priority={row.priority} withLabel />, count: row.count, value: row.priority }))} onSelect={(value) => goBacklog({ priority: String(value) })} /></Col>
+              <Col xs={24} lg={12}><BugBreakdown title="Theo Module" rows={dimensionRows(data.byModule)} onSelect={(value) => goBacklog({ moduleId: value ?? 'unassigned' })} note="Một Bug có thể xuất hiện ở nhiều Module." /></Col>
+              <Col xs={24} lg={12}><BugBreakdown title="Theo Epic" rows={dimensionRows(data.byEpic)} onSelect={(value) => goBacklog({ epicId: value ?? 'unassigned' })} /></Col>
+              <Col xs={24} lg={12}><BugBreakdown title={`Theo ${trackingMode === 'phase' ? 'Phase' : 'Sprint'}`} rows={dimensionRows(data.byPeriod)} onSelect={(value) => goBacklog({ sprintId: value ?? 'backlog' })} /></Col>
+              <Col xs={24} lg={12}><BugBreakdown title="Theo tính năng" rows={dimensionRows(data.byFunction)} onSelect={(value) => goBacklog({ functionId: value ?? 'unassigned' })} note="Một Bug có thể xuất hiện ở nhiều tính năng." /></Col>
             </Row>
             <Card title="Recent activity" style={{ marginTop: 16 }} extra={<ActivityExpand projectKey={projectKey} />}>
               <ActivityFeed projectKey={projectKey} initial={data.recentActivity} initialCursor={data.recentActivityNextCursor} maxHeight={420} />
@@ -107,7 +113,7 @@ function StatusDonut({ data, onSlice }: { data: { total: number; items: { status
           </PieChart>
         </ResponsiveContainer>
         <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', pointerEvents: 'none', textAlign: 'center' }}>
-          <div><div style={{ fontSize: 28, fontWeight: 700 }}>{fmtNumber(data.total)}</div><div className="muted" style={{ fontSize: 12 }}>Total work items</div></div>
+          <div><div style={{ fontSize: 28, fontWeight: 700 }}>{fmtNumber(data.total)}</div><div className="muted" style={{ fontSize: 12 }}>Bug</div></div>
         </div>
       </div>
       <div style={{ maxHeight: 220, overflow: 'auto', flex: 1, minWidth: 180 }}>
@@ -118,21 +124,6 @@ function StatusDonut({ data, onSlice }: { data: { total: number; items: { status
           </div>
         ))}
       </div>
-    </div>
-  );
-}
-
-function Bars({ rows }: { rows: { label: React.ReactNode; count: number }[] }) {
-  const max = Math.max(1, ...rows.map((r) => r.count));
-  return (
-    <div>
-      {rows.map((r, i) => (
-        <div key={i} style={{ display: 'grid', gridTemplateColumns: '120px 1fr 40px', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-          <div>{r.label}</div>
-          <div style={{ background: '#f0f0f0', borderRadius: 3, height: 10 }}><div style={{ width: `${(r.count / max) * 100}%`, background: '#f51d53', height: 10, borderRadius: 3 }} /></div>
-          <div style={{ textAlign: 'right' }}>{fmtNumber(r.count)}</div>
-        </div>
-      ))}
     </div>
   );
 }
@@ -187,7 +178,7 @@ function ActivityExpand({ projectKey }: { projectKey: string }) {
   return (
     <>
       <Button icon={<FullscreenOutlined />} type="text" onClick={() => setOpen(true)} aria-label="Mở rộng" />
-      <Modal open={open} onCancel={() => setOpen(false)} footer={null} width="90vw" title="Recent activity" destroyOnClose>
+      <Modal open={open} onCancel={() => setOpen(false)} footer={null} width="90vw" title="Recent activity" destroyOnHidden>
         {data && <ActivityFeed projectKey={projectKey} initial={data.items} initialCursor={data.nextCursor} maxHeight="70vh" />}
       </Modal>
     </>

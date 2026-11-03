@@ -42,6 +42,14 @@ describe('Project Bug summary', () => {
     expect(summary.byFunction).toEqual(expect.arrayContaining([{ id: Number(fn.id), label: 'PAY-LOGIN · Payment login', count: 1 }, { id: null, label: 'Chưa gắn Function', count: 2 }]));
     expect(summary.byPriority).toEqual(expect.arrayContaining([{ priority: 'highest', count: 1 }, { priority: 'medium', count: 2 }]));
 
+    const unlinkedKeys = async (query: string) => (await ctx.http().get(api(`/projects/ELMS/issues?type=bug&${query}`)).set(auth(t.developer)).expect(200)).body.items.map((item: any) => item.key);
+    expect(await unlinkedKeys('moduleId=unassigned')).toEqual(expect.arrayContaining(['ELMS-4']));
+    expect(await unlinkedKeys('moduleId=unassigned')).not.toContain('ELMS-2');
+    expect(await unlinkedKeys('functionId=unassigned')).toEqual(expect.arrayContaining(['ELMS-3', 'ELMS-4']));
+    expect(await unlinkedKeys('functionId=unassigned')).not.toContain('ELMS-2');
+    expect(await unlinkedKeys('epicId=unassigned')).toEqual(expect.arrayContaining(['ELMS-3', 'ELMS-4']));
+    expect(await unlinkedKeys('epicId=unassigned')).not.toContain('ELMS-2');
+
     const all = (await ctx.http().get(api('/projects/ELMS/summary?scope=all')).set(auth(t.developer)).expect(200)).body;
     expect(all.scope).toBe('all');
     expect(all.cards.total).toBe(4);

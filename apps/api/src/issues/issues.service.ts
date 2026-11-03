@@ -47,16 +47,29 @@ export class IssuesService {
     }
     if (q.labelIds?.length) and.push({ labels: { some: { labelId: { in: q.labelIds.map((v) => parseId(v)) } } } });
     if (q.moduleId) {
-      const moduleId = parseId(q.moduleId);
-      const scope: Prisma.IssueWhereInput = { OR: [{ modules: { some: { moduleId } } }, { functions: { some: { function: { moduleId, deletedAt: null } } } }, { epicRequirement: { modules: { some: { moduleId } } } }, { epicRequirement: { epicLinks: { some: { function: { moduleId, deletedAt: null } } } } }] };
-      and.push({ OR: [scope, { type: 'subtask', parent: { ...scope, deletedAt: null } }] });
+      if (q.moduleId === 'unassigned') {
+        const anyModule: Prisma.IssueWhereInput = { OR: [{ modules: { some: {} } }, { functions: { some: { function: { moduleId: { not: null }, deletedAt: null } } } }, { epicRequirement: { modules: { some: {} } } }, { epicRequirement: { epicLinks: { some: { function: { moduleId: { not: null }, deletedAt: null } } } } }] };
+        and.push({ NOT: { OR: [anyModule, { type: 'subtask', parent: { ...anyModule, deletedAt: null } }] } });
+      } else {
+        const moduleId = parseId(q.moduleId);
+        const scope: Prisma.IssueWhereInput = { OR: [{ modules: { some: { moduleId } } }, { functions: { some: { function: { moduleId, deletedAt: null } } } }, { epicRequirement: { modules: { some: { moduleId } } } }, { epicRequirement: { epicLinks: { some: { function: { moduleId, deletedAt: null } } } } }] };
+        and.push({ OR: [scope, { type: 'subtask', parent: { ...scope, deletedAt: null } }] });
+      }
     }
     if (q.functionId) {
-      const functionId=parseId(q.functionId);
-      const scope: Prisma.IssueWhereInput={OR:[{functions:{some:{functionId}}},{epicRequirement:{epicLinks:{some:{functionId}}}}]};
-      and.push({ OR: [scope, { type: 'subtask', parent: { ...scope, deletedAt: null } }] });
+      if (q.functionId === 'unassigned') {
+        const anyFunction: Prisma.IssueWhereInput = { OR: [{ functions: { some: {} } }, { epicRequirement: { epicLinks: { some: {} } } }] };
+        and.push({ NOT: { OR: [anyFunction, { type: 'subtask', parent: { ...anyFunction, deletedAt: null } }] } });
+      } else {
+        const functionId=parseId(q.functionId);
+        const scope: Prisma.IssueWhereInput={OR:[{functions:{some:{functionId}}},{epicRequirement:{epicLinks:{some:{functionId}}}}]};
+        and.push({ OR: [scope, { type: 'subtask', parent: { ...scope, deletedAt: null } }] });
+      }
     }
-    if (q.epicId) and.push({ OR: [{ parentId: parseId(q.epicId) }, { parent: { parentId: parseId(q.epicId) } }] });
+    if (q.epicId) {
+      if (q.epicId === 'unassigned') and.push({ NOT: { OR: [{ parent: { type: 'epic', deletedAt: null } }, { type: 'subtask', parent: { deletedAt: null, parent: { type: 'epic', deletedAt: null } } }] } });
+      else and.push({ OR: [{ parentId: parseId(q.epicId) }, { parent: { parentId: parseId(q.epicId) } }] });
+    }
     if (q.sprintId) and.push({ sprintId: q.sprintId === 'backlog' ? null : parseId(q.sprintId) });
     if (q.source) and.push({ source: q.source });
     return and;
