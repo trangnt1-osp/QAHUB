@@ -1,7 +1,7 @@
 import { CheckSquareOutlined, GlobalOutlined, InfoCircleOutlined, ProjectOutlined, UnorderedListOutlined } from '@ant-design/icons';
-import { Breadcrumb, Tabs } from 'antd';
+import { Tabs } from 'antd';
 import { ComponentType, lazy, Suspense } from 'react';
-import { Link, Outlet, useLocation, useNavigate, useParams } from 'react-router-dom';
+import { Outlet, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { getProject } from '../api/generated/api';
 import { ErrorState } from '../components/EmptyState';
@@ -33,13 +33,12 @@ export function ProjectLayout() {
   const { projectKey } = useParams();
   const nav = useNavigate();
   const loc = useLocation();
-  const { data: project, error, refetch } = useQuery({ queryKey: ['project', projectKey], queryFn: () => getProject(projectKey!), enabled: !!projectKey });
+  const { error, refetch } = useQuery({ queryKey: ['project', projectKey], queryFn: () => getProject(projectKey!), enabled: !!projectKey });
   const active = projectTabs.find((t) => loc.pathname.includes(`/${t.path}`))?.key ?? 'summary';
   if (error) return <ErrorState error={error} onRetry={refetch} />;
   return (
     <div>
       <div style={{ background: '#fff', padding: '12px 24px 0', borderBottom: '1px solid #f0f0f0' }}>
-        <Breadcrumb items={[{ title: <Link to="/projects">Dự án</Link> }, { title: project ? `${project.key} — ${project.name}` : projectKey }]} />
         <Tabs activeKey={active} onChange={(k) => nav({ pathname: `/projects/${projectKey}/${k}`, search: k === active ? loc.search : '' })}
           items={projectTabs.map((t) => ({ key: t.path, label: <span><t.icon /> {t.label}</span> }))} />
       </div>

@@ -13,13 +13,13 @@ export interface CursorPage {
   onPageSizeChange: (size: number) => void;
 }
 
-type Props<T extends object> = Omit<TableProps<T>, 'pagination'> & { resetKey?: string; cursorPage?: CursorPage };
+type Props<T extends object> = Omit<TableProps<T>, 'pagination'> & { resetKey?: string; cursorPage?: CursorPage; listPage?: { current: number; pageSize: number; onChange: (current: number, pageSize: number) => void } };
 
 /** Shared numbering and pagination for full lists and server cursor pages. */
-export function ListTable<T extends object>({ columns = [], dataSource = [], resetKey = '', cursorPage, onChange, ...props }: Props<T>) {
+export function ListTable<T extends object>({ columns = [], dataSource = [], resetKey = '', cursorPage, listPage, onChange, ...props }: Props<T>) {
   const [state, setState] = useState({ key: resetKey, current: 1, pageSize: 10 });
-  const pageSize = cursorPage?.pageSize ?? state.pageSize;
-  const current = cursorPage?.current ?? Math.min(state.key === resetKey ? state.current : 1, Math.max(1, Math.ceil(dataSource.length / pageSize)));
+  const pageSize = cursorPage?.pageSize ?? listPage?.pageSize ?? state.pageSize;
+  const current = cursorPage?.current ?? Math.min(listPage?.current ?? (state.key === resetKey ? state.current : 1), Math.max(1, Math.ceil(dataSource.length / pageSize)));
   if (state.key !== resetKey || (!cursorPage && state.current !== current)) {
     setState({ key: resetKey, current: cursorPage ? 1 : current, pageSize: state.pageSize });
   }
@@ -34,6 +34,7 @@ export function ListTable<T extends object>({ columns = [], dataSource = [], res
       showTotal: (total, range) => `${range[0]}–${range[1]} / ${total}`,
     }} onChange={(pagination, filters, sorter, extra) => {
       const size = pagination.pageSize ?? pageSize;
+      listPage?.onChange(extra.action !== 'paginate' || size !== pageSize ? 1 : pagination.current ?? 1, size);
       setState({ key: resetKey, pageSize: size, current: extra.action !== 'paginate' || size !== pageSize ? 1 : pagination.current ?? 1 });
       onChange?.(pagination, filters, sorter, extra);
     }} />

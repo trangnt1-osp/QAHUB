@@ -3,7 +3,8 @@ import { ActionIconButton } from '../../components/ActionIconButton';
 import { App, Badge, Button, Form, Input, Modal, Select, Tag } from 'antd';
 import { ListTable } from '../../components/ListTable';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { useUi } from '../../stores/ui';
 import { Link, useNavigate } from 'react-router-dom';
 import { PROJECT_KEY_REGEX } from '@ospm/shared';
 import { createProject, listProjects } from '../../api/generated/api';
@@ -18,18 +19,31 @@ import { EditProjectModal } from './EditProjectModal';
 import { ProjectDateFields, projectDatePayload } from './ProjectDateFields';
 
 export function ProjectsPage() {
+  const projectList = useUi((s) => s.projectList);
+  const setProjectList = useUi((s) => s.setProjectList);
+  const root = useRef<HTMLDivElement>(null);
   const { data = [], isLoading, error, refetch } = useQuery<ProjectRow[]>({ queryKey: ['projects'], queryFn: () => listProjects() });
   const isAdmin = useAuth((s) => s.isSystemAdmin());
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<ProjectRow | null>(null);
   const nav = useNavigate();
+  useEffect(() => {
+    if (isLoading) return;
+    const main = root.current?.closest('main');
+    if (!main) return;
+    main.scrollTop = useUi.getState().projectList.scrollTop;
+    const save = () => setProjectList({ scrollTop: main.scrollTop });
+    main.addEventListener('scroll', save);
+    return () => main.removeEventListener('scroll', save);
+  }, [isLoading, setProjectList]);
   return (
-    <div className="page">
+    <div className="page" ref={root}>
       <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
         {isAdmin && <Button type="primary" icon={<PlusOutlined />} onClick={() => setOpen(true)}>Tạo dự án</Button>}
       </div>
       <QueryBoundary isLoading={isLoading} error={error} refetch={refetch} empty={!data.length} emptyTitle="Bạn chưa tham gia dự án nào">
         <ListTable<ProjectRow> rowKey="id" dataSource={data} size="middle" style={{ background: '#fff' }}
+          listPage={{ ...projectList, onChange: (current, pageSize) => setProjectList({ current, pageSize, scrollTop: 0 }) }}
           onRow={(r) => ({ onClick: () => nav(`/projects/${r.key}/summary`), style: { cursor: 'pointer' } })}
           columns={[
             { title: 'Key', dataIndex: 'key', width: 90, render: (k) => <Link to={`/projects/${k}/summary`} onClick={(e) => e.stopPropagation()}><b>{k}</b></Link> },
