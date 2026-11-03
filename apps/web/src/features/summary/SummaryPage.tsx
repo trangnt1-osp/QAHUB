@@ -7,7 +7,7 @@ import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip as RTooltip } from 'r
 import { useNavigate, useParams } from 'react-router-dom';
 import { ISSUE_TYPES } from '@ospm/shared';
 import { getProjectActivity, getSummary } from '../../api/generated/api';
-import { useMembers, useProjectTracking } from '../../api/hooks';
+import { useMembers, useProjectTracking, useSprints } from '../../api/hooks';
 import type { ActivityItem } from '../../api/models';
 import { AvatarFilter } from '../../components/AvatarFilter';
 import { QueryBoundary } from '../../components/EmptyState';
@@ -62,6 +62,7 @@ export default function SummaryPage() {
   const [source, setSource] = useState<string>();
   const [scope, setScope] = useState<Scope>('open');
   const trackingMode = useProjectTracking(projectKey);
+  const { data: periods = [] } = useSprints(projectKey);
   const params = { assigneeIds: assignees.join(',') || undefined, type: types.join(',') || undefined, source, scope };
   const { data, isLoading, error, refetch } = useQuery<SummaryData>({ queryKey: ['summary', projectKey, params], queryFn: () => getSummary(projectKey, { params }) });
   const common = { assigneeIds: assignees, source };
@@ -99,27 +100,19 @@ export default function SummaryPage() {
             </Row>
             <Space style={{ margin: '28px 0 16px', width: '100%', justifyContent: 'space-between' }} wrap><Typography.Title level={3} style={{ margin: 0 }}>Report BUG</Typography.Title><Segmented value={scope} onChange={(value) => setScope(value as Scope)} options={[{ value: 'open', label: 'Bug đang mở' }, { value: 'all', label: 'Tất cả Bug' }]} /></Space>
             <Row gutter={[16, 16]}>
-              {[
-                { v: data.bugReport.cards.total, t: scope === 'open' ? 'Tổng Bug đang mở' : 'Tổng Bug', extra: {} },
-                { v: data.bugReport.cards.highest, t: 'Highest', extra: { priority: 'highest' } },
-                { v: data.bugReport.cards.unassigned, t: 'Chưa phân công', extra: { assigneeIds: 'unassigned' }, disabled: assignees.length > 0 },
-                { v: data.bugReport.cards.createdLast7d, t: 'Mới trong 7 ngày', extra: { createdAfter: data.bugReport.createdLast7dFrom }, disabled: false },
-              ].map((card) => (
-                <Col key={card.t} xs={12} md={6}><Card hoverable={!card.disabled} onClick={card.disabled ? undefined : () => goBacklog(card.extra)}><Statistic groupSeparator="." decimalSeparator="," title={card.t} value={card.v} /></Card></Col>
-              ))}
+              <BugMetricWidget title={scope === 'open' ? 'Tổng Bug đang mở' : 'Tổng Bug'} cardKey="total" projectKey={projectKey} params={params} base={data.bugReport} periods={periods} onOpen={(period) => goBacklog({ sprintId: period })} />
+              <BugMetricWidget title="Highest" cardKey="highest" projectKey={projectKey} params={params} base={data.bugReport} periods={periods} onOpen={(period) => goBacklog({ priority: 'highest', sprintId: period })} />
+              <BugMetricWidget title="Chưa phân công" cardKey="unassigned" projectKey={projectKey} params={params} base={data.bugReport} periods={periods} disabled={assignees.length > 0} onOpen={(period) => goBacklog({ assigneeIds: 'unassigned', sprintId: period })} />
+              <BugMetricWidget title="Mới trong 7 ngày" cardKey="createdLast7d" projectKey={projectKey} params={params} base={data.bugReport} periods={periods} onOpen={(period, report) => goBacklog({ createdAfter: report.createdLast7dFrom, sprintId: period })} />
             </Row>
             {data.bugReport.cards.total === 0 && <Empty style={{ margin: '24px 0' }} description="Chưa có Bug trong phạm vi đã chọn" />}
             <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
-              <Col xs={24} lg={12}>
-                <Card title="Theo trạng thái" style={{ height: '100%' }}>
-                  <StatusDonut data={data.bugReport.statusOverview} onSlice={(id) => goBacklog({ statusIds: id })} totalLabel="Bug" />
-                </Card>
-              </Col>
-              <Col xs={24} lg={12}><BugBreakdown title="Theo Priority" rows={data.bugReport.byPriority.map((row) => ({ key: row.priority, label: <PriorityIcon priority={row.priority} withLabel />, count: row.count, value: row.priority }))} onSelect={(value) => goBacklog({ priority: String(value) })} /></Col>
-              <Col xs={24} lg={12}><BugBreakdown title="Theo Module" rows={dimensionRows(data.bugReport.byModule)} onSelect={(value) => goBacklog({ moduleId: value ?? 'unassigned' })} note="Một Bug có thể xuất hiện ở nhiều Module." /></Col>
-              <Col xs={24} lg={12}><BugBreakdown title="Theo Epic" rows={dimensionRows(data.bugReport.byEpic)} onSelect={(value) => goBacklog({ epicId: value ?? 'unassigned' })} /></Col>
-              <Col xs={24} lg={12}><BugBreakdown title={`Theo ${trackingMode === 'phase' ? 'Phase' : 'Sprint'}`} rows={dimensionRows(data.bugReport.byPeriod)} onSelect={(value) => goBacklog({ sprintId: value ?? 'backlog' })} /></Col>
-              <Col xs={24} lg={12}><BugBreakdown title="Theo tính năng" rows={dimensionRows(data.bugReport.byFunction)} onSelect={(value) => goBacklog({ functionId: value ?? 'unassigned' })} note="Một Bug có thể xuất hiện ở nhiều tính năng." /></Col>
+              <BugStatusWidget projectKey={projectKey} params={params} base={data.bugReport} periods={periods} onOpen={(statusId, period) => goBacklog({ statusIds: statusId, sprintId: period })} />
+              <BugDimensionWidget title="Theo Priority" projectKey={projectKey} params={params} base={data.bugReport} periods={periods} rows={(report) => report.byPriority.map((row) => ({ key: row.priority, label: <PriorityIcon priority={row.priority} withLabel />, count: row.count, value: row.priority }))} onOpen={(value, period) => goBacklog({ priority: String(value), sprintId: period })} />
+              <BugDimensionWidget title="Theo Module" projectKey={projectKey} params={params} base={data.bugReport} periods={periods} rows={(report) => dimensionRows(report.byModule)} onOpen={(value, period) => goBacklog({ moduleId: value ?? 'unassigned', sprintId: period })} note="Một Bug có thể xuất hiện ở nhiều Module." />
+              <BugDimensionWidget title="Theo Epic" projectKey={projectKey} params={params} base={data.bugReport} periods={periods} rows={(report) => dimensionRows(report.byEpic)} onOpen={(value, period) => goBacklog({ epicId: value ?? 'unassigned', sprintId: period })} />
+              <BugDimensionWidget title={`Theo ${trackingMode === 'phase' ? 'Phase' : 'Sprint'}`} projectKey={projectKey} params={params} base={data.bugReport} periods={periods} rows={(report) => dimensionRows(report.byPeriod)} onOpen={(value, period) => goBacklog({ sprintId: period ?? value ?? 'backlog' })} />
+              <BugDimensionWidget title="Theo tính năng" projectKey={projectKey} params={params} base={data.bugReport} periods={periods} rows={(report) => dimensionRows(report.byFunction)} onOpen={(value, period) => goBacklog({ functionId: value ?? 'unassigned', sprintId: period })} note="Một Bug có thể xuất hiện ở nhiều tính năng." />
             </Row>
             <Card title="Recent activity" style={{ marginTop: 16 }} extra={<ActivityExpand projectKey={projectKey} />}>
               <ActivityFeed projectKey={projectKey} initial={data.recentActivity} initialCursor={data.recentActivityNextCursor} maxHeight={420} />
@@ -129,6 +122,51 @@ export default function SummaryPage() {
       </QueryBoundary>
     </div>
   );
+}
+
+type PeriodOption = { id: number; name: string };
+type SummaryParams = { assigneeIds?: string; type?: string; source?: string; scope: Scope };
+
+function useWidgetReport(projectKey: string, params: SummaryParams, period: string | undefined, base: BugReportData) {
+  const query = useQuery<SummaryData>({
+    queryKey: ['summary', projectKey, 'bug-widget', params, period],
+    queryFn: () => getSummary(projectKey, { params: { ...params, sprintId: period } }),
+    enabled: period !== undefined,
+  });
+  return period === undefined ? base : query.data?.bugReport ?? base;
+}
+
+function PeriodFilter({ periods, value, onChange }: { periods: PeriodOption[]; value?: string; onChange: (value?: string) => void }) {
+  return <Select aria-label="Lọc Sprint/Phase" allowClear placeholder="Tất cả Sprint/Phase" value={value} onChange={onChange} onClick={(event) => event.stopPropagation()} style={{ width: 170 }}
+    options={[{ value: 'backlog', label: 'Chưa phân bổ' }, ...periods.map((period) => ({ value: String(period.id), label: period.name }))]} />;
+}
+
+function BugMetricWidget({ title, cardKey, projectKey, params, base, periods, disabled, onOpen }: {
+  title: string; cardKey: keyof BugReportData['cards']; projectKey: string; params: SummaryParams; base: BugReportData; periods: PeriodOption[]; disabled?: boolean;
+  onOpen: (period: string | undefined, report: BugReportData) => void;
+}) {
+  const [period, setPeriod] = useState<string>();
+  const report = useWidgetReport(projectKey, params, period, base);
+  return <Col xs={12} md={6}><Card hoverable={!disabled} onClick={disabled ? undefined : () => onOpen(period, report)} extra={<PeriodFilter periods={periods} value={period} onChange={setPeriod} />}>
+    <Statistic groupSeparator="." decimalSeparator="," title={title} value={report.cards[cardKey]} />
+  </Card></Col>;
+}
+
+function BugStatusWidget({ projectKey, params, base, periods, onOpen }: { projectKey: string; params: SummaryParams; base: BugReportData; periods: PeriodOption[]; onOpen: (statusId: number, period?: string) => void }) {
+  const [period, setPeriod] = useState<string>();
+  const report = useWidgetReport(projectKey, params, period, base);
+  return <Col xs={24} lg={12}><Card title="Theo trạng thái" extra={<PeriodFilter periods={periods} value={period} onChange={setPeriod} />} style={{ height: '100%' }}>
+    <StatusDonut data={report.statusOverview} onSlice={(id) => onOpen(id, period)} totalLabel="Bug" />
+  </Card></Col>;
+}
+
+function BugDimensionWidget({ title, projectKey, params, base, periods, rows, onOpen, note }: {
+  title: string; projectKey: string; params: SummaryParams; base: BugReportData; periods: PeriodOption[];
+  rows: (report: BugReportData) => BugBreakdownRow[]; onOpen: (value: BugBreakdownRow['value'], period?: string) => void; note?: string;
+}) {
+  const [period, setPeriod] = useState<string>();
+  const report = useWidgetReport(projectKey, params, period, base);
+  return <Col xs={24} lg={12}><BugBreakdown title={title} rows={rows(report)} onSelect={(value) => onOpen(value, period)} note={note} extra={<PeriodFilter periods={periods} value={period} onChange={setPeriod} />} /></Col>;
 }
 
 function StatusDonut({ data, onSlice, totalLabel }: { data: { total: number; items: { statusId: number; name: string; color: string; count: number }[] }; onSlice: (statusId: number) => void; totalLabel: string }) {

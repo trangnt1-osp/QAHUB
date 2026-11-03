@@ -10,6 +10,7 @@ export class SummaryQuery {
   @IsOptional() @IsString() type?: string;
   @IsOptional() @IsString() source?: string;
   @IsOptional() @IsIn(['open', 'all']) scope?: 'open' | 'all';
+  @IsOptional() @IsString() sprintId?: string;
 }
 
 @ApiTags('summary')

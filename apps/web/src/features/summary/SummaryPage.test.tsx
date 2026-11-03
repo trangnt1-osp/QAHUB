@@ -18,6 +18,7 @@ vi.mock('../../api/hooks', async () => ({
   ...(await vi.importActual<typeof import('../../api/hooks')>('../../api/hooks')),
   useMembers: () => ({ data: [] }),
   useProjectTracking: () => 'phase',
+  useSprints: () => ({ data: [{ id: 41, name: 'Phase Alpha' }] }),
 }));
 
 vi.mock('recharts', () => ({
@@ -79,6 +80,8 @@ describe('SummaryPage Report BUG', () => {
     expect(screen.getByText('Chưa phân công')).toBeInTheDocument();
     expect(screen.getByText('Mới trong 7 ngày')).toBeInTheDocument();
     for (const title of ['Theo trạng thái', 'Theo Module', 'Theo Epic', 'Theo Phase', 'Theo tính năng', 'Theo Priority']) expect(screen.getByText(title)).toBeInTheDocument();
+    // Ant Design exposes both the select container and its input with the same accessible label.
+    expect(screen.getAllByLabelText('Lọc Sprint/Phase')).toHaveLength(20);
 
     fireEvent.click(screen.getByText('PAY · Payments'));
     expect(await screen.findByLabelText('location')).toHaveTextContent('/projects/DEMO/backlog?type=bug&includeAllPeriods=true&statusCategory=open&moduleId=21');

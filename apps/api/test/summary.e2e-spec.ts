@@ -45,6 +45,11 @@ describe('Project Bug summary', () => {
     expect(bugs.byPeriod).toEqual(expect.arrayContaining([{ id: Number(period.id), label: 'Phase Alpha', count: 1 }, { id: null, label: 'Chưa phân bổ', count: 2 }]));
     expect(bugs.byFunction).toEqual(expect.arrayContaining([{ id: Number(fn.id), label: 'PAY-LOGIN · Payment login', count: 1 }, { id: null, label: 'Chưa gắn Function', count: 2 }]));
     expect(bugs.byPriority).toEqual(expect.arrayContaining([{ priority: 'highest', count: 1 }, { priority: 'medium', count: 2 }]));
+    const periodSummary = (await ctx.http().get(api(`/projects/ELMS/summary?sprintId=${period.id}`)).set(auth(t.developer)).expect(200)).body;
+    expect(periodSummary.bugReport.cards.total).toBe(1);
+    expect(periodSummary.bugReport.byModule).toEqual([{ id: Number(module.id), label: 'PAY · Payments', count: 1 }]);
+    const backlogSummary = (await ctx.http().get(api('/projects/ELMS/summary?sprintId=backlog')).set(auth(t.developer)).expect(200)).body;
+    expect(backlogSummary.bugReport.cards.total).toBe(2);
 
     const unlinkedKeys = async (query: string) => (await ctx.http().get(api(`/projects/ELMS/issues?type=bug&${query}`)).set(auth(t.developer)).expect(200)).body.items.map((item: any) => item.key);
     expect(await unlinkedKeys('moduleId=unassigned')).toEqual(expect.arrayContaining(['ELMS-4']));

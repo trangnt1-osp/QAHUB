@@ -9,9 +9,9 @@ export interface BugBreakdownRow {
   value: string | number | null;
 }
 
-export function BugBreakdown({ title, rows, onSelect, note }: { title: string; rows: BugBreakdownRow[]; onSelect: (value: BugBreakdownRow['value']) => void; note?: string }) {
+export function BugBreakdown({ title, rows, onSelect, note, extra }: { title: string; rows: BugBreakdownRow[]; onSelect: (value: BugBreakdownRow['value']) => void; note?: string; extra?: ReactNode }) {
   const max = Math.max(1, ...rows.map((row) => row.count));
-  return <Card title={title} size="small" style={{ height: '100%' }}>
+  return <Card title={title} extra={extra} size="small" style={{ height: '100%' }}>
     {rows.length === 0 ? <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Không có dữ liệu" /> : <div style={{ maxHeight: 280, overflow: 'auto' }}>
       {rows.map((row) => <Button key={row.key} type="text" block onClick={() => onSelect(row.value)} style={{ height: 'auto', padding: '6px 4px', display: 'grid', gridTemplateColumns: 'minmax(110px, 1fr) minmax(80px, 2fr) 44px', alignItems: 'center', gap: 8, textAlign: 'left' }}>
         <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{row.label}</span>

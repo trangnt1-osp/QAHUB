@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import { parseIds } from '../common/bigint';
+import { parseId, parseIds } from '../common/bigint';
 import { clampLimit, decodeCursor, toPage } from '../common/pagination';
 import { PrismaService } from '../common/prisma.service';
 
@@ -9,6 +9,7 @@ export interface SummaryFilter {
   types?: string[];
   source?: string;
   scope?: 'open' | 'all';
+  sprintId?: bigint | null;
 }
 
 const filterSql = (f: SummaryFilter, alias = 'i'): Prisma.Sql => {
@@ -17,11 +18,13 @@ const filterSql = (f: SummaryFilter, alias = 'i'): Prisma.Sql => {
   if (f.assigneeIds?.length) parts.push(Prisma.sql`AND ${col('assignee_id')} = ANY(${f.assigneeIds})`);
   if (f.types?.length) parts.push(Prisma.sql`AND ${col('type')} = ANY(${f.types})`);
   if (f.source) parts.push(Prisma.sql`AND ${col('source')} = ${f.source}`);
+  if (f.sprintId === null) parts.push(Prisma.sql`AND ${col('sprint_id')} IS NULL`);
+  else if (f.sprintId !== undefined) parts.push(Prisma.sql`AND ${col('sprint_id')} = ${f.sprintId}`);
   return parts.length ? Prisma.join(parts, ' ') : Prisma.empty;
 };
 
-export function parseSummaryFilter(q: { assigneeIds?: string; type?: string; source?: string; scope?: 'open' | 'all' }): SummaryFilter {
-  return { assigneeIds: parseIds(q.assigneeIds), types: q.type ? q.type.split(',').filter(Boolean) : undefined, source: q.source, scope: q.scope ?? 'open' };
+export function parseSummaryFilter(q: { assigneeIds?: string; type?: string; source?: string; scope?: 'open' | 'all'; sprintId?: string }): SummaryFilter {
+  return { assigneeIds: parseIds(q.assigneeIds), types: q.type ? q.type.split(',').filter(Boolean) : undefined, source: q.source, scope: q.scope ?? 'open', sprintId: q.sprintId === 'backlog' ? null : q.sprintId ? parseId(q.sprintId) : undefined };
 }
 
 @Injectable()
