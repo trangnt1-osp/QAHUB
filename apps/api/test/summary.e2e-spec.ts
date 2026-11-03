@@ -2,8 +2,7 @@ import { auth, createTestApp, setupProject, TestCtx } from './helpers';
 
 const api = (p: string) => `/api/v1${p}`;
 
-/** Định nghĩa 4 thẻ số liệu 7 ngày (mục 7). */
-describe('Summary cards', () => {
+describe('Project Bug summary', () => {
   let ctx: TestCtx;
   let t: Record<string, string>;
   const day = 86400_000;
@@ -14,28 +13,42 @@ describe('Summary cards', () => {
   });
   afterAll(() => ctx.close());
 
-  it('completed / updated / created / due soon + filter assignee', async () => {
-    const mk = async (title: string, extra: Record<string, unknown> = {}) => (await ctx.http().post(api('/projects/ELMS/issues')).set(auth(t.developer)).send({ type: 'task', title, ...extra }).expect(201)).body;
+  it('defaults to open Bugs and aggregates Module, Epic, period, Function and Priority', async () => {
+    const project = await ctx.prisma.project.findUniqueOrThrow({ where: { key: 'ELMS' } });
     const dev = await ctx.prisma.user.findUniqueOrThrow({ where: { email: 'dev@x.test' } });
-    const a = await mk('A', { assigneeId: Number(dev.id), dueDate: new Date(Date.now() + 3 * day).toISOString().slice(0, 10) });
-    const b = await mk('B', { dueDate: new Date(Date.now() + 30 * day).toISOString().slice(0, 10) });
-    const c = await mk('C');
-    const wf = (await ctx.http().get(api('/projects/ELMS/workflow')).set(auth(t.admin))).body;
-    const done = wf.statuses.find((s: any) => s.name === 'Done');
-    await ctx.http().post(api(`/issues/${c.key}/transitions`)).set(auth(t.admin)).send({ toStatusId: done.id }).expect(200);
-    // item C đã xong; một item cũ ngoài 7 ngày
-    await ctx.prisma.issue.update({ where: { id: BigInt(b.id) }, data: { createdAt: new Date(Date.now() - 20 * day), updatedAt: new Date(Date.now() - 20 * day) } });
+    const statuses = await ctx.prisma.workflowStatus.findMany({ where: { projectId: project.id } });
+    const openStatus = statuses.find((status) => status.category === 'todo') ?? statuses.find((status) => !['done', 'triage'].includes(status.category))!;
+    const doneStatus = statuses.find((status) => status.category === 'done')!;
+    const module = await ctx.prisma.projectModule.create({ data: { projectId: project.id, code: 'PAY', name: 'Payments' } });
+    const fn = await ctx.prisma.requirement.create({ data: { projectId: project.id, kind: 'function', code: 'PAY-LOGIN', name: 'Payment login', rank: 'a', moduleId: module.id } });
+    const epicIssue = await ctx.prisma.issue.create({ data: { projectId: project.id, number: 1n, type: 'epic', title: 'Payment Epic', statusId: openStatus.id, priority: 'medium', source: 'manual', rank: 'a' } });
+    const period = await ctx.prisma.sprint.create({ data: { projectId: project.id, name: 'Phase Alpha', kind: 'phase', state: 'active' } });
+    const createIssue = async (number: bigint, title: string, data: Record<string, unknown> = {}) => ctx.prisma.issue.create({ data: { projectId: project.id, number, type: 'bug', title, statusId: openStatus.id, priority: 'medium', source: 'manual', rank: `z${number}`, ...(data as any) } });
+    const highest = await createIssue(2n, 'Highest unassigned', { priority: 'highest', parentId: epicIssue.id, sprintId: period.id });
+    const assigned = await createIssue(3n, 'Assigned Bug', { assigneeId: dev.id });
+    const unlinked = await createIssue(4n, 'Old unlinked Bug', { createdAt: new Date(Date.now() - 20 * day) });
+    await createIssue(5n, 'Closed Bug', { statusId: doneStatus.id, resolvedAt: new Date() });
+    await ctx.prisma.issue.create({ data: { projectId: project.id, number: 6n, type: 'task', title: 'Task excluded', statusId: openStatus.id, priority: 'highest', source: 'manual', rank: 'z6' } });
+    await ctx.prisma.issueModule.createMany({ data: [{ issueId: highest.id, moduleId: module.id }, { issueId: assigned.id, moduleId: module.id }] });
+    await ctx.prisma.issueFunction.create({ data: { issueId: highest.id, functionId: fn.id } });
 
-    const s = (await ctx.http().get(api('/projects/ELMS/summary')).set(auth(t.developer)).expect(200)).body;
-    expect(s.cards).toEqual({ completedLast7d: 1, updatedLast7d: 2, createdLast7d: 2, dueNext7d: 1 });
-    expect(s.statusOverview.total).toBe(3);
-    expect(s.bySource).toEqual({ manual: 3, auto: 0, pendingReview: 0 });
-    expect(s.byType).toEqual([{ type: 'task', count: 3 }]);
+    const summary = (await ctx.http().get(api('/projects/ELMS/summary')).set(auth(t.developer)).expect(200)).body;
+    expect(summary.scope).toBe('open');
+    expect(summary.cards).toEqual({ total: 3, highest: 1, unassigned: 2, createdLast7d: 2 });
+    expect(summary.statusOverview.total).toBe(3);
+    expect(summary.byModule).toEqual(expect.arrayContaining([{ id: Number(module.id), label: 'PAY · Payments', count: 2 }, { id: null, label: 'Chưa gắn Module', count: 1 }]));
+    expect(summary.byEpic).toEqual(expect.arrayContaining([{ id: Number(epicIssue.id), label: 'ELMS-1 · Payment Epic', count: 1 }, { id: null, label: 'Chưa gắn Epic', count: 2 }]));
+    expect(summary.byPeriod).toEqual(expect.arrayContaining([{ id: Number(period.id), label: 'Phase Alpha', count: 1 }, { id: null, label: 'Chưa phân bổ', count: 2 }]));
+    expect(summary.byFunction).toEqual(expect.arrayContaining([{ id: Number(fn.id), label: 'PAY-LOGIN · Payment login', count: 1 }, { id: null, label: 'Chưa gắn Function', count: 2 }]));
+    expect(summary.byPriority).toEqual(expect.arrayContaining([{ priority: 'highest', count: 1 }, { priority: 'medium', count: 2 }]));
 
+    const all = (await ctx.http().get(api('/projects/ELMS/summary?scope=all')).set(auth(t.developer)).expect(200)).body;
+    expect(all.scope).toBe('all');
+    expect(all.cards.total).toBe(4);
     const mine = (await ctx.http().get(api(`/projects/ELMS/summary?assigneeIds=${dev.id}`)).set(auth(t.developer)).expect(200)).body;
-    expect(mine.cards).toEqual({ completedLast7d: 0, updatedLast7d: 1, createdLast7d: 1, dueNext7d: 1 });
-    expect(mine.statusOverview.total).toBe(1);
-    void a;
+    expect(mine.cards.total).toBe(1);
+    expect(mine.cards.unassigned).toBe(0);
+    void unlinked;
   });
 
   it('dashboard aggregates across my projects and hides triage for non-testers', async () => {

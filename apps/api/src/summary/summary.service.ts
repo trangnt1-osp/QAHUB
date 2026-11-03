@@ -8,6 +8,7 @@ export interface SummaryFilter {
   assigneeIds?: bigint[];
   types?: string[];
   source?: string;
+  scope?: 'open' | 'all';
 }
 
 const filterSql = (f: SummaryFilter, alias = 'i'): Prisma.Sql => {
@@ -19,8 +20,8 @@ const filterSql = (f: SummaryFilter, alias = 'i'): Prisma.Sql => {
   return parts.length ? Prisma.join(parts, ' ') : Prisma.empty;
 };
 
-export function parseSummaryFilter(q: { assigneeIds?: string; type?: string; source?: string }): SummaryFilter {
-  return { assigneeIds: parseIds(q.assigneeIds), types: q.type ? q.type.split(',').filter(Boolean) : undefined, source: q.source };
+export function parseSummaryFilter(q: { assigneeIds?: string; type?: string; source?: string; scope?: 'open' | 'all' }): SummaryFilter {
+  return { assigneeIds: parseIds(q.assigneeIds), types: q.type ? q.type.split(',').filter(Boolean) : undefined, source: q.source, scope: q.scope ?? 'open' };
 }
 
 @Injectable()
@@ -52,20 +53,56 @@ export class SummaryService {
 
   async summary(projectId: bigint, f: SummaryFilter) {
     const flt = filterSql(f);
-    const [cards, statuses, source, byType, byPriority, activity] = await Promise.all([
-      this.cards([projectId], f),
+    const scope = f.scope ?? 'open';
+    const scopeSql = scope === 'open' ? Prisma.sql`AND s.category <> 'done'` : Prisma.empty;
+    const [cardRows, statuses, source, byModule, byEpic, byPeriod, byFunction, byPriority, activity] = await Promise.all([
+      this.prisma.$queryRaw<{ total: bigint; highest: bigint; unassigned: bigint; created: bigint }[]>`
+        SELECT count(*) total,
+          count(*) FILTER (WHERE i.priority = 'highest') highest,
+          count(*) FILTER (WHERE i.assignee_id IS NULL) unassigned,
+          count(*) FILTER (WHERE i.created_at >= now() - interval '7 days') created
+        FROM issues i JOIN workflow_statuses s ON s.id = i.status_id
+        WHERE i.project_id = ${projectId} AND i.deleted_at IS NULL AND i.type = 'bug' ${scopeSql} ${flt}`,
       this.prisma.$queryRaw<{ id: bigint; name: string; category: string; color: string; position: number; n: bigint }[]>`
         SELECT s.id, s.name, s.category, s.color, s.position, count(i.id) n
-        FROM workflow_statuses s LEFT JOIN issues i ON i.status_id = s.id AND i.deleted_at IS NULL ${flt}
+        FROM workflow_statuses s LEFT JOIN issues i ON i.status_id = s.id AND i.deleted_at IS NULL AND i.type = 'bug' ${flt}
         WHERE s.project_id = ${projectId} AND (NOT s.is_archived OR i.id IS NOT NULL)
+          ${scope === 'open' ? Prisma.sql`AND s.category <> 'done'` : Prisma.empty}
         GROUP BY s.id ORDER BY s.position`,
       this.prisma.$queryRaw<{ source: string; pending: boolean; n: bigint }[]>`
         SELECT i.source, (s.category = 'triage') pending, count(*) n FROM issues i JOIN workflow_statuses s ON s.id = i.status_id
-        WHERE i.project_id = ${projectId} AND i.deleted_at IS NULL ${flt} GROUP BY 1, 2`,
-      this.prisma.$queryRaw<{ type: string; n: bigint }[]>`
-        SELECT i.type, count(*) n FROM issues i WHERE i.project_id = ${projectId} AND i.deleted_at IS NULL ${flt} GROUP BY 1 ORDER BY 2 DESC`,
+        WHERE i.project_id = ${projectId} AND i.deleted_at IS NULL AND i.type = 'bug' ${scopeSql} ${flt} GROUP BY 1, 2`,
+      this.prisma.$queryRaw<{ id: bigint | null; label: string | null; n: bigint }[]>`
+        WITH links AS (
+          SELECT issue_id, module_id FROM issue_modules
+          UNION
+          SELECT f.issue_id, r.module_id FROM issue_functions f JOIN requirements r ON r.id = f.function_id WHERE r.module_id IS NOT NULL
+        )
+        SELECT m.id, CASE WHEN m.id IS NULL THEN NULL ELSE m.code || ' · ' || m.name END label, count(DISTINCT i.id) n
+        FROM issues i JOIN workflow_statuses s ON s.id = i.status_id
+        LEFT JOIN links l ON l.issue_id = i.id LEFT JOIN project_modules m ON m.id = l.module_id
+        WHERE i.project_id = ${projectId} AND i.deleted_at IS NULL AND i.type = 'bug' ${scopeSql} ${flt}
+        GROUP BY m.id, m.code, m.name ORDER BY n DESC, label`,
+      this.prisma.$queryRaw<{ id: bigint | null; label: string | null; n: bigint }[]>`
+        SELECT e.id, CASE WHEN e.id IS NULL THEN NULL ELSE p.key || '-' || e.number || ' · ' || e.title END label, count(DISTINCT i.id) n
+        FROM issues i JOIN projects p ON p.id = i.project_id JOIN workflow_statuses s ON s.id = i.status_id
+        LEFT JOIN issues e ON e.id = i.parent_id AND e.type = 'epic' AND e.deleted_at IS NULL
+        WHERE i.project_id = ${projectId} AND i.deleted_at IS NULL AND i.type = 'bug' ${scopeSql} ${flt}
+        GROUP BY e.id, p.key, e.number, e.title ORDER BY n DESC, label`,
+      this.prisma.$queryRaw<{ id: bigint | null; label: string | null; n: bigint }[]>`
+        SELECT sp.id, sp.name label, count(DISTINCT i.id) n
+        FROM issues i JOIN workflow_statuses s ON s.id = i.status_id LEFT JOIN sprints sp ON sp.id = i.sprint_id
+        WHERE i.project_id = ${projectId} AND i.deleted_at IS NULL AND i.type = 'bug' ${scopeSql} ${flt}
+        GROUP BY sp.id, sp.name ORDER BY n DESC, label`,
+      this.prisma.$queryRaw<{ id: bigint | null; label: string | null; n: bigint }[]>`
+        SELECT r.id, CASE WHEN r.id IS NULL THEN NULL ELSE r.code || ' · ' || r.name END label, count(DISTINCT i.id) n
+        FROM issues i JOIN workflow_statuses s ON s.id = i.status_id
+        LEFT JOIN issue_functions f ON f.issue_id = i.id LEFT JOIN requirements r ON r.id = f.function_id
+        WHERE i.project_id = ${projectId} AND i.deleted_at IS NULL AND i.type = 'bug' ${scopeSql} ${flt}
+        GROUP BY r.id, r.code, r.name ORDER BY n DESC, label`,
       this.prisma.$queryRaw<{ priority: string; n: bigint }[]>`
-        SELECT i.priority, count(*) n FROM issues i WHERE i.project_id = ${projectId} AND i.deleted_at IS NULL ${flt} GROUP BY 1
+        SELECT i.priority, count(*) n FROM issues i JOIN workflow_statuses s ON s.id = i.status_id
+        WHERE i.project_id = ${projectId} AND i.deleted_at IS NULL AND i.type = 'bug' ${scopeSql} ${flt} GROUP BY 1
         ORDER BY array_position(ARRAY['highest','high','medium','low','lowest'], i.priority)`,
       this.recentActivity([projectId], undefined, 20),
     ]);
@@ -75,14 +112,20 @@ export class SummaryService {
       bySource[r.source as 'manual' | 'auto'] += Number(r.n);
       if (r.pending) bySource.pendingReview += Number(r.n);
     }
+    const cards = { total: Number(cardRows[0].total), highest: Number(cardRows[0].highest), unassigned: Number(cardRows[0].unassigned), createdLast7d: Number(cardRows[0].created) };
+    const dimension = (rows: { id: bigint | null; label: string | null; n: bigint }[], emptyLabel: string) => rows.map((row) => ({ id: row.id, label: row.label ?? emptyLabel, count: Number(row.n) }));
     return {
+      scope,
       cards,
       statusOverview: {
         total,
         items: statuses.map((s) => ({ statusId: s.id, name: s.name, category: s.category, color: s.color, count: Number(s.n) })),
       },
       bySource,
-      byType: byType.map((r) => ({ type: r.type, count: Number(r.n) })),
+      byModule: dimension(byModule, 'Chưa gắn Module'),
+      byEpic: dimension(byEpic, 'Chưa gắn Epic'),
+      byPeriod: dimension(byPeriod, 'Chưa phân bổ'),
+      byFunction: dimension(byFunction, 'Chưa gắn Function'),
       byPriority: byPriority.map((r) => ({ priority: r.priority, count: Number(r.n) })),
       recentActivity: activity.items,
       recentActivityNextCursor: activity.nextCursor,
