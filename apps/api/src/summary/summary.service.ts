@@ -54,13 +54,14 @@ export class SummaryService {
   async summary(projectId: bigint, f: SummaryFilter) {
     const flt = filterSql(f);
     const scope = f.scope ?? 'open';
+    const createdLast7dFrom = new Date(Date.now() - 7 * 86400_000);
     const scopeSql = scope === 'open' ? Prisma.sql`AND s.category <> 'done'` : Prisma.empty;
     const [cardRows, statuses, source, byModule, byEpic, byPeriod, byFunction, byPriority, activity] = await Promise.all([
       this.prisma.$queryRaw<{ total: bigint; highest: bigint; unassigned: bigint; created: bigint }[]>`
         SELECT count(*) total,
           count(*) FILTER (WHERE i.priority = 'highest') highest,
           count(*) FILTER (WHERE i.assignee_id IS NULL) unassigned,
-          count(*) FILTER (WHERE i.created_at >= now() - interval '7 days') created
+          count(*) FILTER (WHERE i.created_at >= ${createdLast7dFrom}) created
         FROM issues i JOIN workflow_statuses s ON s.id = i.status_id
         WHERE i.project_id = ${projectId} AND i.deleted_at IS NULL AND i.type = 'bug' ${scopeSql} ${flt}`,
       this.prisma.$queryRaw<{ id: bigint; name: string; category: string; color: string; position: number; n: bigint }[]>`
@@ -116,6 +117,7 @@ export class SummaryService {
     const dimension = (rows: { id: bigint | null; label: string | null; n: bigint }[], emptyLabel: string) => rows.map((row) => ({ id: row.id, label: row.label ?? emptyLabel, count: Number(row.n) }));
     return {
       scope,
+      createdLast7dFrom: createdLast7dFrom.toISOString(),
       cards,
       statusOverview: {
         total,

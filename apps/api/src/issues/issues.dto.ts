@@ -1,6 +1,6 @@
 import { ISSUE_TYPES, IssueType, LINK_TYPES, LinkType, PRIORITIES, Priority, TRIAGE_ACTIONS, TriageAction } from '@ospm/shared';
 import { Transform, Type } from 'class-transformer';
-import { ArrayMaxSize, ArrayNotEmpty, IsArray, IsIn, IsInt, IsObject, IsOptional, IsString, Matches, MaxLength, Min, MinLength, ValidateNested } from 'class-validator';
+import { ArrayMaxSize, ArrayNotEmpty, IsArray, IsBoolean, IsDateString, IsIn, IsInt, IsObject, IsOptional, IsString, Matches, MaxLength, Min, MinLength, ValidateNested } from 'class-validator';
 import { PaginationQuery } from '../common/pagination';
 
 const csv = () => Transform(({ value }) => (typeof value === 'string' ? value.split(',').filter(Boolean) : value));
@@ -11,7 +11,8 @@ export class ListIssuesQuery extends PaginationQuery {
   @IsOptional() @csv() @IsArray() @IsIn(PRIORITIES as unknown as string[], { each: true }) priority?: Priority[];
   @IsOptional() @csv() @IsArray() statusIds?: string[];
   @IsOptional() @IsIn(['open', 'done']) statusCategory?: 'open' | 'done';
-  @IsOptional() @Matches(/^\d{4}-\d{2}-\d{2}$/) createdFrom?: string;
+  @IsOptional() @IsDateString({ strict: true }) createdFrom?: string;
+  @IsOptional() @IsDateString() createdAfter?: string;
   @IsOptional() @csv() @IsArray() assigneeIds?: string[];
   @IsOptional() @csv() @IsArray() labelIds?: string[];
   @IsOptional() @IsString() functionId?: string;
@@ -20,6 +21,7 @@ export class ListIssuesQuery extends PaginationQuery {
   /** id sprint, hoặc "backlog" để lấy item chưa vào sprint */
   @IsOptional() @IsString() sprintId?: string;
   @IsOptional() @IsIn(['manual', 'auto']) source?: 'manual' | 'auto';
+  @IsOptional() @Transform(({ value }) => value === true || value === 'true') @IsBoolean() includeAllPeriods?: boolean;
 }
 
 export class CreateIssueDto {

@@ -23,6 +23,7 @@ type Scope = 'open' | 'all';
 interface DimensionRow { id: number | null; label: string; count: number }
 interface SummaryData {
   scope: Scope;
+  createdLast7dFrom: string;
   cards: { total: number; highest: number; unassigned: number; createdLast7d: number };
   statusOverview: { total: number; items: { statusId: number; name: string; category: string; color: string; count: number }[] };
   byModule: DimensionRow[]; byEpic: DimensionRow[]; byPeriod: DimensionRow[]; byFunction: DimensionRow[];
@@ -33,6 +34,7 @@ interface SummaryData {
 export function buildBugBacklogUrl(projectKey: string, scope: Scope, common: { assigneeIds?: number[]; source?: string }, extra: Record<string, string | number | undefined> = {}) {
   const query = new URLSearchParams();
   query.set('type', 'bug');
+  query.set('includeAllPeriods', 'true');
   if (scope === 'open') query.set('statusCategory', 'open');
   if (common.assigneeIds?.length) query.set('assigneeIds', common.assigneeIds.join(','));
   if (common.source) query.set('source', common.source);
@@ -70,10 +72,10 @@ export default function SummaryPage() {
               {[
                 { v: data.cards.total, t: scope === 'open' ? 'Tổng Bug đang mở' : 'Tổng Bug', extra: {} },
                 { v: data.cards.highest, t: 'Highest', extra: { priority: 'highest' } },
-                { v: data.cards.unassigned, t: 'Chưa phân công', extra: { assigneeIds: 'unassigned' } },
-                { v: data.cards.createdLast7d, t: 'Mới trong 7 ngày', extra: { createdFrom: new Date(Date.now() - 6 * 86400_000).toISOString().slice(0, 10) } },
+                { v: data.cards.unassigned, t: 'Chưa phân công', extra: { assigneeIds: 'unassigned' }, disabled: assignees.length > 0 },
+                { v: data.cards.createdLast7d, t: 'Mới trong 7 ngày', extra: { createdAfter: data.createdLast7dFrom }, disabled: false },
               ].map((card) => (
-                <Col key={card.t} xs={12} md={6}><Card hoverable onClick={() => goBacklog(card.extra)}><Statistic groupSeparator="." decimalSeparator="," title={card.t} value={card.v} /></Card></Col>
+                <Col key={card.t} xs={12} md={6}><Card hoverable={!card.disabled} onClick={card.disabled ? undefined : () => goBacklog(card.extra)}><Statistic groupSeparator="." decimalSeparator="," title={card.t} value={card.v} /></Card></Col>
               ))}
             </Row>
             {data.cards.total === 0 && <Empty style={{ margin: '24px 0' }} description="Chưa có Bug trong phạm vi đã chọn" />}

@@ -41,6 +41,7 @@ export class IssuesService {
     if (q.statusIds?.length) and.push({ statusId: { in: q.statusIds.map((v) => parseId(v)) } });
     if (q.statusCategory) and.push({ status: { category: q.statusCategory === 'open' ? { not: 'done' } : 'done' } });
     if (q.createdFrom) and.push({ createdAt: { gte: new Date(`${q.createdFrom}T00:00:00.000Z`) } });
+    if (q.createdAfter) and.push({ createdAt: { gte: new Date(q.createdAfter) } });
     if (q.assigneeIds?.length) {
       const ids = q.assigneeIds.filter((v) => v !== 'unassigned');
       and.push({ OR: [...(ids.length ? [{ assigneeId: { in: ids.map((v) => parseId(v)) } }] : []), ...(q.assigneeIds.includes('unassigned') ? [{ assigneeId: null }] : [])] });

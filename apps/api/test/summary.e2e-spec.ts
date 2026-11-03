@@ -34,6 +34,7 @@ describe('Project Bug summary', () => {
 
     const summary = (await ctx.http().get(api('/projects/ELMS/summary')).set(auth(t.developer)).expect(200)).body;
     expect(summary.scope).toBe('open');
+    expect(new Date(summary.createdLast7dFrom).toString()).not.toBe('Invalid Date');
     expect(summary.cards).toEqual({ total: 3, highest: 1, unassigned: 2, createdLast7d: 2 });
     expect(summary.statusOverview.total).toBe(3);
     expect(summary.byModule).toEqual(expect.arrayContaining([{ id: Number(module.id), label: 'PAY · Payments', count: 2 }, { id: null, label: 'Chưa gắn Module', count: 1 }]));
@@ -49,6 +50,12 @@ describe('Project Bug summary', () => {
     expect(await unlinkedKeys('functionId=unassigned')).not.toContain('ELMS-2');
     expect(await unlinkedKeys('epicId=unassigned')).toEqual(expect.arrayContaining(['ELMS-3', 'ELMS-4']));
     expect(await unlinkedKeys('epicId=unassigned')).not.toContain('ELMS-2');
+    expect(await unlinkedKeys(`createdAfter=${encodeURIComponent(summary.createdLast7dFrom)}`)).toEqual(expect.arrayContaining(['ELMS-2', 'ELMS-3']));
+
+    await ctx.prisma.sprint.update({ where: { id: period.id }, data: { state: 'closed', completedAt: new Date() } });
+    const historical = (await ctx.http().get(api(`/projects/ELMS/backlog?type=bug&includeAllPeriods=true&sprintId=${period.id}`)).set(auth(t.developer)).expect(200)).body;
+    expect(historical.sprints[0].issues.map((item: any) => item.key)).toContain('ELMS-2');
+    await ctx.http().get(api('/projects/ELMS/issues?createdFrom=2026-99-99')).set(auth(t.developer)).expect(400);
 
     const all = (await ctx.http().get(api('/projects/ELMS/summary?scope=all')).set(auth(t.developer)).expect(200)).body;
     expect(all.scope).toBe('all');

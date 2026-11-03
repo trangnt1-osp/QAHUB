@@ -4,6 +4,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { vi } from 'vitest';
 import SummaryPage from './SummaryPage';
+import { useUi } from '../../stores/ui';
 
 const getSummary = vi.fn();
 
@@ -29,6 +30,7 @@ vi.mock('recharts', () => ({
 
 const response = {
   scope: 'open',
+  createdLast7dFrom: '2026-10-27T12:00:00.000Z',
   cards: { total: 8, highest: 2, unassigned: 3, createdLast7d: 4 },
   statusOverview: { total: 8, items: [{ statusId: 11, name: 'To Do', category: 'todo', color: '#1677ff', count: 8 }] },
   byModule: [{ id: 21, label: 'PAY · Payments', count: 5 }],
@@ -57,7 +59,7 @@ function renderPage() {
 
 describe('SummaryPage Report BUG', () => {
   beforeEach(() => getSummary.mockResolvedValue(response));
-  afterEach(() => vi.clearAllMocks());
+  afterEach(() => { vi.clearAllMocks(); useUi.getState().setAssigneeFilter('DEMO', []); });
 
   it('shows the open Bug dashboard and drills a Module into Backlog', async () => {
     renderPage();
@@ -71,7 +73,7 @@ describe('SummaryPage Report BUG', () => {
     for (const title of ['Theo trạng thái', 'Theo Module', 'Theo Epic', 'Theo Phase', 'Theo tính năng', 'Theo Priority']) expect(screen.getByText(title)).toBeInTheDocument();
 
     fireEvent.click(screen.getByText('PAY · Payments'));
-    expect(await screen.findByLabelText('location')).toHaveTextContent('/projects/DEMO/backlog?type=bug&statusCategory=open&moduleId=21');
+    expect(await screen.findByLabelText('location')).toHaveTextContent('/projects/DEMO/backlog?type=bug&includeAllPeriods=true&statusCategory=open&moduleId=21');
   });
 
   it('switches to all Bugs and renders a clear empty state', async () => {
@@ -80,5 +82,12 @@ describe('SummaryPage Report BUG', () => {
 
     fireEvent.click(await screen.findByText('Tất cả Bug'));
     expect(await screen.findByText('Chưa có Bug trong phạm vi đã chọn')).toBeInTheDocument();
+  });
+
+  it('does not replace an active assignee filter from the unassigned KPI', async () => {
+    useUi.getState().setAssigneeFilter('DEMO', [7]);
+    renderPage();
+    fireEvent.click(await screen.findByText('Chưa phân công'));
+    expect(screen.getByLabelText('location')).toHaveTextContent('/projects/DEMO/summary');
   });
 });

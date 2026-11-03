@@ -1147,7 +1147,14 @@
             "required": false,
             "in": "query",
             "schema": {
-              "pattern": "/^\\d{4}-\\d{2}-\\d{2}$/",
+              "type": "string"
+            }
+          },
+          {
+            "name": "createdAfter",
+            "required": false,
+            "in": "query",
+            "schema": {
               "type": "string"
             }
           },
@@ -1216,6 +1223,14 @@
                 "auto"
               ],
               "type": "string"
+            }
+          },
+          {
+            "name": "includeAllPeriods",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "boolean"
             }
           },
           {
@@ -2049,7 +2064,14 @@
             "required": false,
             "in": "query",
             "schema": {
-              "pattern": "/^\\d{4}-\\d{2}-\\d{2}$/",
+              "type": "string"
+            }
+          },
+          {
+            "name": "createdAfter",
+            "required": false,
+            "in": "query",
+            "schema": {
               "type": "string"
             }
           },
@@ -2118,6 +2140,14 @@
                 "auto"
               ],
               "type": "string"
+            }
+          },
+          {
+            "name": "includeAllPeriods",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "boolean"
             }
           },
           {
@@ -2205,7 +2235,14 @@
             "required": false,
             "in": "query",
             "schema": {
-              "pattern": "/^\\d{4}-\\d{2}-\\d{2}$/",
+              "type": "string"
+            }
+          },
+          {
+            "name": "createdAfter",
+            "required": false,
+            "in": "query",
+            "schema": {
               "type": "string"
             }
           },
@@ -2274,6 +2311,14 @@
                 "auto"
               ],
               "type": "string"
+            }
+          },
+          {
+            "name": "includeAllPeriods",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "boolean"
             }
           },
           {

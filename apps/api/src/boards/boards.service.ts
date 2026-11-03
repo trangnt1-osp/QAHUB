@@ -29,8 +29,13 @@ export class BoardsService {
   async backlog(project: ProjectContext, q: ListIssuesQuery) {
     const config = await this.prisma.project.findUniqueOrThrow({ where: { id: project.id } });
     const filters = this.issues.filterWhere(project.id, { ...q, cursor: undefined });
+    const requestedPeriodId = q.sprintId && q.sprintId !== 'backlog' ? BigInt(q.sprintId) : undefined;
     const sprints = await this.prisma.sprint.findMany({
-      where: { projectId: project.id, kind: config.trackingMode, deletedAt: null, state: { in: ['active', 'future'] } },
+      where: requestedPeriodId
+        ? { projectId: project.id, id: requestedPeriodId, deletedAt: null }
+        : q.includeAllPeriods
+          ? { projectId: project.id, deletedAt: null }
+          : { projectId: project.id, kind: config.trackingMode, deletedAt: null, state: { in: ['active', 'future'] } },
       orderBy: [{ state: 'asc' }, { position: 'asc' }, { id: 'asc' }], // 'active' < 'future'
     });
     const result = [];
