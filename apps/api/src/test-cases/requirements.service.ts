@@ -1,13 +1,12 @@
 import { Injectable } from '@nestjs/common';
-import { ERROR_CODES, rankBetween } from '@ospm/shared';
+import { ERROR_CODES, Permission, rankBetween } from '@ospm/shared';
 import { ActivityService } from '../activity/activity.service';
-import { AppException, notFound, unprocessable } from '../common/errors';
+import { AppException, forbidden, notFound, unprocessable } from '../common/errors';
 import { PrismaService, Tx } from '../common/prisma.service';
 import { CreateRequirementDto, UpdateRequirementDto } from './test-cases.dto';
 
-export function progressOf(c: { total: number; passed: number; na: number }): number {
-  const denom = c.total - c.na;
-  return denom > 0 ? Math.round((c.passed / denom) * 1000) / 10 : 0;
+export function progressOf(c: { total: number; passed: number; failed: number; na: number }): number {
+  return c.total > 0 ? Math.round(((c.passed + c.failed) / c.total) * 1000) / 10 : 0;
 }
 
 @Injectable()
@@ -46,8 +45,9 @@ export class RequirementsService {
       const functions = links.filter((l) => l.epicId === e.id).map((l) => fnById.get(l.functionId)).filter(Boolean).map((f) => fnDto(f!));
       const total = functions.reduce((a, f) => a + f.counts.total, 0);
       const passed = functions.reduce((a, f) => a + f.counts.passed, 0);
+      const failed = functions.reduce((a, f) => a + f.counts.failed, 0);
       const na = functions.reduce((a, f) => a + f.counts.na, 0);
-      return { id: e.id, kind: e.kind, code: e.code, name: e.name, traceRef: e.traceRef, sources: srcBy.get(e.id) ?? [], rank: e.rank, functions, counts: { total, passed, na }, progress: progressOf({ total, passed, na }) };
+      return { id: e.id, kind: e.kind, code: e.code, name: e.name, traceRef: e.traceRef, sources: srcBy.get(e.id) ?? [], rank: e.rank, functions, counts: { total, passed, failed, na }, progress: progressOf({ total, passed, failed, na }) };
     });
     const unassigned = [...fnById.values()].filter((f) => !linkedFns.has(f.id)).map(fnDto);
     return { epics, unassigned };
@@ -107,10 +107,13 @@ export class RequirementsService {
   }
 
   /** Xóa mềm; xóa function thì xóa mềm cả test case của nó. */
-  async remove(id: bigint, actorId: bigint) {
+  async remove(id: bigint, actorId: bigint, permissions?: Permission[]) {
     await this.prisma.$transaction(async (tx) => {
       const req = await tx.requirement.findFirst({ where: { id, deletedAt: null } });
       if (!req) throw notFound(ERROR_CODES.REQUIREMENT_NOT_FOUND, 'Không tìm thấy epic/function');
+      if (req.kind === 'function' && permissions && !permissions.includes('testcase.delete') && await tx.testCase.count({ where: { functionId: id, deletedAt: null } })) {
+        throw forbidden('Cần quyền xóa test case để xóa function còn chứa test case.');
+      }
       const now = new Date();
       await tx.requirement.update({ where: { id }, data: { deletedAt: now } });
       if (req.kind === 'function') await tx.testCase.updateMany({ where: { functionId: id, deletedAt: null }, data: { deletedAt: now } });

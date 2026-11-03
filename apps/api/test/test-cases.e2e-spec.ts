@@ -135,6 +135,29 @@ describe('Test cases', () => {
     expect(tree.epics[0].functions[0].counts.total).toBeGreaterThan(0);
   });
 
+  it('keeps execution progress consistent for function, epic and summary when results change', async () => {
+    const epic = (await ctx.http().post(api('/projects/ELMS/requirements')).set(auth(t.admin)).send({ kind: 'epic', code: 'EXEC-E', name: 'Execution' }).expect(201)).body;
+    const fn = (await ctx.http().post(api('/projects/ELMS/requirements')).set(auth(t.admin)).send({ kind: 'function', code: 'EXEC-F', name: 'Execution', epicIds: [epic.id] }).expect(201)).body;
+    let failed: any;
+    for (const status of ['passed', 'failed', 'blocked', 'na', 'not_started']) {
+      const row = (await ctx.http().post(api('/projects/ELMS/test-cases')).set(auth(t.admin)).send({ functionId: fn.id, title: status, status }).expect(201)).body;
+      if (status === 'failed') failed = row;
+    }
+    const check = async (progress: number) => {
+      const tree = (await ctx.http().get(api('/projects/ELMS/requirements')).set(auth(t.viewer)).expect(200)).body;
+      const node = tree.epics.find((e: any) => e.id === epic.id);
+      expect(node).toMatchObject({ progress, counts: { total: 5 } });
+      expect(node.functions[0]).toMatchObject({ progress, counts: { total: 5 } });
+      for (const scope of [`functionId=${fn.id}`, `epicId=${epic.id}`]) {
+        const summary = (await ctx.http().get(api(`/projects/ELMS/test-cases/summary?${scope}`)).set(auth(t.viewer)).expect(200)).body;
+        expect(summary).toMatchObject({ progress, totals: { total: 5 } });
+      }
+    };
+    await check(40);
+    await ctx.http().patch(api(`/test-cases/${failed.id}`)).set(auth(t.admin)).send({ version: failed.version, status: 'not_started' }).expect(200);
+    await check(20);
+  });
+
   it('Excel export then import into a clean project round-trips epics, functions and cases', async () => {
     const exp = await ctx.http().post(api(`/projects/ELMS/test-cases/export?functionId=${fnId}`)).set(auth(t.viewer)).expect(202);
     const job = (await ctx.http().get(api(`/jobs/${exp.body.jobId}`)).set(auth(t.viewer)).expect(200)).body;

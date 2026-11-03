@@ -6,7 +6,7 @@ import { PRIORITIES } from '@ospm/shared';
 import { listIssues, triageIssue } from '../../api/generated/api';
 import { errorMessage } from '../../api/http';
 import { useMembers, useSprints } from '../../api/hooks';
-import { useCan } from '../auth/authStore';
+import { usePermission } from '../auth/authStore';
 
 type Action = 'accept' | 'reject' | 'duplicate';
 
@@ -16,7 +16,7 @@ export function TriageButtons({ issueKey, projectKey, onDone, size = 'small' }: 
   const [form] = Form.useForm();
   const [saving, setSaving] = useState(false);
   const [dupOptions, setDupOptions] = useState<{ value: string; label: string }[]>([]);
-  const canTriage = useCan(projectKey, 'tester');
+  const canTriage = usePermission(projectKey, 'issue.triage');
   const { data: members = [] } = useMembers(action === 'accept' ? projectKey : undefined);
   const { data: sprints = [] } = useSprints(action === 'accept' ? projectKey : undefined);
   const qc = useQueryClient();
@@ -24,6 +24,7 @@ export function TriageButtons({ issueKey, projectKey, onDone, size = 'small' }: 
   if (!canTriage) return null;
 
   const submit = async (values: Record<string, any>) => {
+    if (!canTriage) return;
     setSaving(true);
     try {
       await triageIssue(issueKey, { action: action!, reason: values.reason, duplicateOfKey: values.duplicateOfKey, assigneeId: values.assigneeId, sprintId: values.sprintId, priority: values.priority });

@@ -1,8 +1,9 @@
 import { Injectable, OnModuleInit } from '@nestjs/common';
-import { ERROR_CODES, generateRanks, rankBetween, TEST_CASE_PRIORITIES } from '@ospm/shared';
+import { ERROR_CODES, generateRanks, Permission, rankBetween, TEST_CASE_PRIORITIES } from '@ospm/shared';
 import ExcelJS from 'exceljs';
 import { StorageService } from '../attachments/storage.service';
-import { AppException } from '../common/errors';
+import { AppException, forbidden } from '../common/errors';
+import { ProjectContextService } from '../common/project-context.service';
 import { PrismaService, Tx } from '../common/prisma.service';
 import { JobsService } from '../jobs/jobs.service';
 import { JOBS, QueueService } from '../queue/queue.service';
@@ -55,7 +56,7 @@ export function splitSteps(actions: string, expected: string): { action: string;
 
 @Injectable()
 export class ExcelService implements OnModuleInit {
-  constructor(private readonly prisma: PrismaService, private readonly storage: StorageService, private readonly queue: QueueService, private readonly jobs: JobsService) {}
+  constructor(private readonly prisma: PrismaService, private readonly storage: StorageService, private readonly queue: QueueService, private readonly jobs: JobsService, private readonly projectCtx: ProjectContextService) {}
 
   onModuleInit() {
     this.jobs.register(JOBS.TEST_CASES_EXPORT, (d) => this.runExport(d));
@@ -65,6 +66,7 @@ export class ExcelService implements OnModuleInit {
   // ---------- Xuất ----------
 
   async runExport(d: { projectId: string; functionId?: string; userId: string }) {
+    await this.authorizeJob(d, 'testcase.export');
     const projectId = BigInt(d.projectId);
     const project = await this.prisma.project.findUniqueOrThrow({ where: { id: projectId } });
     const buffer = await this.buildWorkbook(projectId, d.functionId ? BigInt(d.functionId) : undefined);
@@ -100,14 +102,13 @@ export class ExcelService implements OnModuleInit {
       ws.addRow([]);
       ws.addRow(['Checklist Summary']).font = { bold: true };
       ws.addRow(['Category', ...Object.values(STATUS_LABEL), 'Total']).font = { bold: true };
-      const tot = { not_started: 0, passed: 0, failed: 0, blocked: 0, na: 0 } as Record<string, number>;
+      const tot = Object.fromEntries(Object.keys(STATUS_LABEL).map((status) => [status, cases.filter((t) => t.status === status).length]));
       for (const c of cats) {
         const mine = cases.filter((t) => t.categoryId === c.id);
         const row = Object.keys(STATUS_LABEL).map((s) => mine.filter((t) => t.status === s).length);
-        row.forEach((n, i) => (tot[Object.keys(STATUS_LABEL)[i]] += n));
         ws.addRow([c.name, ...row, mine.length]);
       }
-      ws.addRow(['Progress (%)', progressOf({ total: cases.length, passed: tot.passed, na: tot.na })]);
+      ws.addRow(['Tested (%)', progressOf({ total: cases.length, passed: tot.passed, failed: tot.failed, na: tot.na })]);
       ws.addRow([]);
       const header = ws.addRow(HEADERS);
       header.font = { bold: true };
@@ -316,6 +317,7 @@ export class ExcelService implements OnModuleInit {
   }
 
   async runImport(d: { projectId: string; userId: string; objectKey: string; mode: 'preview' | 'commit' }) {
+    await this.authorizeJob(d, 'testcase.import');
     const buffer = await this.storage.getObject(d.objectKey);
     let parsed: ParseResult;
     try {
@@ -330,6 +332,14 @@ export class ExcelService implements OnModuleInit {
 
   async enqueueImport(projectId: bigint, userId: bigint, objectKey: string, mode: 'preview' | 'commit') {
     return this.queue.send(JOBS.TEST_CASES_IMPORT, { projectId: projectId.toString(), userId: userId.toString(), objectKey, mode });
+  }
+
+  private async authorizeJob(d: { projectId: string; userId: string }, permission: Permission) {
+    const user = await this.prisma.user.findUnique({ where: { id: BigInt(d.userId) } });
+    if (!user?.isActive) throw forbidden('Người thực hiện không còn hoạt động.');
+    const project = await this.prisma.project.findFirst({ where: { id: BigInt(d.projectId), deletedAt: null }, select: { id: true } });
+    if (!project) throw forbidden('Dự án không còn hoạt động.');
+    await this.projectCtx.requirePermission(user, project.id, permission);
   }
 
   async enqueueExport(projectId: bigint, userId: bigint, functionId?: string) {

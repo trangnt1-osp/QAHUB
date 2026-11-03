@@ -1,9 +1,11 @@
 import {
   ArrowLeftOutlined, ApiOutlined, AppstoreOutlined, BarChartOutlined, DashboardOutlined, KeyOutlined, LogoutOutlined, MenuFoldOutlined, MenuUnfoldOutlined,
-  PlusOutlined, SettingOutlined, TeamOutlined, UserOutlined,
+  PlusOutlined, SafetyCertificateOutlined, SettingOutlined, TeamOutlined, UserOutlined,
 } from '@ant-design/icons';
 import { Button, Dropdown, Input, Layout, Menu, Typography } from 'antd';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+import type { Permission } from '@ospm/shared';
 import { Outlet, useLocation, useMatches, useNavigate } from 'react-router-dom';
 import { AUTH_EXPIRED_EVENT } from '../api/http';
 import { useProjectTracking } from '../api/hooks';
@@ -18,38 +20,49 @@ import { useQuickSearch } from '../features/issues/useQuickSearch';
 const { Sider, Header, Content } = Layout;
 
 export function AppLayout() {
-  const { user, projects, isSystemAdmin, logout } = useAuth();
+  const { user, projects, isSystemAdmin, logout, hasPermission, reload } = useAuth();
+  const qc = useQueryClient();
   const { sidebarCollapsed, toggleSidebar } = useUi();
   const nav = useNavigate();
   const loc = useLocation();
   const matches = useMatches();
   const screenTitle = matches.reduce((title, match) => (match.handle as { title?: string } | undefined)?.title ?? title, 'OSP QA HUB');
   const projectKey = loc.pathname.startsWith('/projects/') ? matches.find((match) => match.params.projectKey)?.params.projectKey : undefined;
-  const phase = useProjectTracking(projectKey) === 'phase';
+  const phase = useProjectTracking(hasPermission(projectKey, 'project.view') ? projectKey : undefined) === 'phase';
   const displayTitle = phase && screenTitle === 'Active sprint' ? 'Active phase' : screenTitle;
   const show = useCreateIssueModal((s) => s.show);
   const [pwOpen, setPwOpen] = useState(false);
   const quickSearch = useQuickSearch();
 
   useEffect(() => {
-    const h = () => { useAuth.setState({ user: null, projects: [] }); nav('/login', { state: { from: loc.pathname + loc.search } }); };
+    const h = () => { qc.clear(); useAuth.setState({ user: null, projects: [] }); nav('/login', { state: { from: loc.pathname + loc.search } }); };
     window.addEventListener(AUTH_EXPIRED_EVENT, h);
     return () => window.removeEventListener(AUTH_EXPIRED_EVENT, h);
-  }, [nav, loc.pathname, loc.search]);
+  }, [nav, loc.pathname, loc.search, qc]);
 
-  const isAnyProjectAdmin = isSystemAdmin() || projects.some((p) => p.role === 'admin');
+  const permissionSnapshot = JSON.stringify([user?.id, user?.systemRole, projects.map((project) => [project.projectKey, project.role, project.roleId, project.permissions])]);
+  const previousPermissions = useRef(permissionSnapshot);
+  useEffect(() => {
+    if (previousPermissions.current !== permissionSnapshot) { previousPermissions.current = permissionSnapshot; qc.clear(); }
+  }, [permissionSnapshot, qc]);
+  useEffect(() => {
+    const refresh = () => { if (useAuth.getState().user && document.visibilityState === 'visible') void reload().catch(() => undefined); };
+    const timer = window.setInterval(refresh, 30_000);
+    window.addEventListener('focus', refresh);
+    return () => { window.clearInterval(timer); window.removeEventListener('focus', refresh); };
+  }, [reload]);
+
   const isAdmin = isSystemAdmin();
-  // 6 menu chính (mục 1); Member/API Keys/Cấu hình chỉ hiện với người có quyền
-  const items = useMemo(
-    () => [
-      { key: '/dashboard', icon: <DashboardOutlined />, label: 'Dashboard' },
-      { key: '/projects', icon: <AppstoreOutlined />, label: 'Dự án' },
+  const any = (permission: Permission) => isAdmin || projects.some((project) => hasPermission(project.projectKey, permission));
+  const items = [
+      ...(any('dashboard.view') ? [{ key: '/dashboard', icon: <DashboardOutlined />, label: 'Dashboard' }] : []),
+      ...(any('project.view') ? [{ key: '/projects', icon: <AppstoreOutlined />, label: 'Dự án' }] : []),
       ...(isAdmin ? [{ key: '/members', icon: <TeamOutlined />, label: 'Member' }] : []),
-      { key: '/reports', icon: <BarChartOutlined />, label: 'Report' },
-      ...(isAnyProjectAdmin ? [{ key: '/api-keys', icon: <KeyOutlined />, label: 'API Keys' }, { key: '/settings', icon: <SettingOutlined />, label: 'Cấu hình' }] : []),
-    ],
-    [isAnyProjectAdmin, isAdmin],
-  );
+      ...(isAdmin ? [{ key: '/roles', icon: <SafetyCertificateOutlined />, label: 'Vai trò' }] : []),
+      ...(any('report.view') ? [{ key: '/reports', icon: <BarChartOutlined />, label: 'Report' }] : []),
+      ...(any('apikey.view') ? [{ key: '/api-keys', icon: <KeyOutlined />, label: 'API Keys' }] : []),
+      ...(any('settings.view') ? [{ key: '/settings', icon: <SettingOutlined />, label: 'Cấu hình' }] : []),
+    ];
   const selected = items.find((i) => loc.pathname.startsWith(i.key) || (i.key === '/projects' && loc.pathname.startsWith('/browse')))?.key;
 
   return (
@@ -65,7 +78,7 @@ export function AppLayout() {
           <div style={{ flexShrink: 0, padding: sidebarCollapsed ? 8 : 12, borderTop: '1px solid #f0f0f0' }}>
             <Dropdown trigger={['click']} placement="topLeft" menu={{ items: [
               { key: 'pw', label: 'Đổi mật khẩu', onClick: () => setPwOpen(true) },
-              { key: 'out', icon: <LogoutOutlined />, label: 'Đăng xuất', onClick: async () => { await logout(); nav('/login'); } },
+              { key: 'out', icon: <LogoutOutlined />, label: 'Đăng xuất', onClick: async () => { await logout(); qc.clear(); nav('/login'); } },
             ] }}>
               <Button type="text" block icon={<UserOutlined />} aria-label={`Tài khoản: ${user?.displayName ?? ''}`} title={user?.displayName}
                 style={{ height: 40, display: 'flex', alignItems: 'center', justifyContent: sidebarCollapsed ? 'center' : 'flex-start' }}>
@@ -83,9 +96,9 @@ export function AppLayout() {
             <Typography.Text strong ellipsis data-testid="screen-title" style={{ minWidth: 0, fontSize: 18 }}>{projectKey ? `${projectKey} / ${displayTitle}` : displayTitle}</Typography.Text>
           </div>
           <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 12 }}>
-            <Input.Search placeholder="Tìm nhanh theo mã item (ELMS-2249)" allowClear style={{ width: 'clamp(100px, 25vw, 360px)' }}
-              value={quickSearch.value} onChange={(e) => quickSearch.onChange(e.target.value)} onSearch={quickSearch.onSearch} />
-            <Button type="primary" icon={<PlusOutlined />} onClick={() => show()}>Tạo</Button>
+            {any('issue.view') && <Input.Search placeholder="Tìm nhanh theo mã item (ELMS-2249)" allowClear style={{ width: 'clamp(100px, 25vw, 360px)' }}
+              value={quickSearch.value} onChange={(e) => quickSearch.onChange(e.target.value)} onSearch={quickSearch.onSearch} />}
+            {any('issue.create') && <Button type="primary" icon={<PlusOutlined />} onClick={() => show()}>Tạo</Button>}
           </div>
         </Header>
         <Content style={{ minHeight: 0, overflow: 'auto' }}><Outlet /></Content>

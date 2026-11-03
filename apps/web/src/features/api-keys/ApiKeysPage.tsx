@@ -10,15 +10,17 @@ import { createApiKey, listApiKeys, revokeApiKey } from '../../api/generated/api
 import { errorMessage } from '../../api/http';
 import { QueryBoundary } from '../../components/EmptyState';
 import { fmtDateTime } from '../../lib/date';
-import { useAuth } from '../auth/authStore';
+import { useAuth, usePermission } from '../auth/authStore';
 
 const STATUS: Record<string, { color: string; text: string }> = { active: { color: 'success', text: 'Đang dùng' }, expired: { color: 'warning', text: 'Hết hạn' }, revoked: { color: 'default', text: 'Đã thu hồi' } };
 
 export function ApiKeysPage() {
-  const isAdmin = useAuth((s) => s.isSystemAdmin());
-  const projects = useAuth((s) => s.projects).filter((p) => isAdmin || p.role === 'admin');
+  const state = useAuth();
+  const projects = state.projects.filter((p) => state.hasPermission(p.projectKey, 'apikey.view'));
   const [sp, setSp] = useSearchParams();
-  const projectKey = sp.get('project') ?? projects[0]?.projectKey;
+  const requestedProject = sp.get('project');
+  const projectKey = projects.find((project) => project.projectKey === requestedProject)?.projectKey ?? projects[0]?.projectKey;
+  const canManage = usePermission(projectKey, 'apikey.manage');
   const { data = [], isLoading, error, refetch } = useQuery<any[]>({ queryKey: ['api-keys', projectKey], queryFn: () => listApiKeys(projectKey!), enabled: !!projectKey });
   const [open, setOpen] = useState(false);
   const [created, setCreated] = useState<{ key: string; name: string } | null>(null);
@@ -43,8 +45,8 @@ export function ApiKeysPage() {
           { title: 'Dùng gần nhất', dataIndex: 'lastUsedAt', render: (v, k: any) => (v ? `${fmtDateTime(v)}${k.lastUsedIp ? ` · ${k.lastUsedIp}` : ''}` : '—') },
           { title: 'Hết hạn', dataIndex: 'expiresAt', render: (v) => (v ? fmtDateTime(v) : 'Không hết hạn') },
           { title: 'Trạng thái', dataIndex: 'status', render: (s) => <Tag color={STATUS[s].color}>{STATUS[s].text}</Tag> },
-          { title: '', render: (_, k: any) => k.status === 'active' && (
-            <Popconfirm title="Thu hồi API key này? CI đang dùng key sẽ bị từ chối." okText="Thu hồi" cancelText="Hủy" okButtonProps={{ danger: true }} onConfirm={async () => { try { await revokeApiKey(k.id); await qc.invalidateQueries({ queryKey: ['api-keys'] }); } catch (e) { message.error(errorMessage(e)); } }}>
+          { title: '', render: (_, k: any) => canManage && k.status === 'active' && (
+            <Popconfirm title="Thu hồi API key này? CI đang dùng key sẽ bị từ chối." okText="Thu hồi" cancelText="Hủy" okButtonProps={{ danger: true }} onConfirm={async () => { if (!canManage) return; try { await revokeApiKey(k.id); await qc.invalidateQueries({ queryKey: ['api-keys'] }); } catch (e) { message.error(errorMessage(e)); } }}>
               <a style={{ color: '#f5222d' }}>Thu hồi</a>
             </Popconfirm>
           ) },
@@ -53,6 +55,7 @@ export function ApiKeysPage() {
 
       <Modal title="Tạo API key" open={open} onCancel={() => setOpen(false)} onOk={() => form.submit()} okText="Tạo" cancelText="Hủy" destroyOnClose>
         <Form form={form} layout="vertical" initialValues={{ scopes: ['runs:write'], days: 90 }} onFinish={async (v) => {
+          if (!canManage || !projectKey) return;
           try {
             const r = await createApiKey(projectKey!, { name: v.name, scopes: v.scopes, expiresAt: v.days ? dayjs().add(v.days, 'day').toISOString() : undefined });
             setCreated({ key: r.key, name: r.name }); setOpen(false); form.resetFields(); await qc.invalidateQueries({ queryKey: ['api-keys'] });

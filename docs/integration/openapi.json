@@ -225,6 +225,193 @@
         ]
       }
     },
+    "/api/v1/roles": {
+      "get": {
+        "operationId": "listRoles",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "roles"
+        ]
+      },
+      "post": {
+        "operationId": "createRole",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateRoleDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "roles"
+        ]
+      }
+    },
+    "/api/v1/roles/builtin/{key}": {
+      "patch": {
+        "operationId": "updateBuiltinRole",
+        "parameters": [
+          {
+            "name": "key",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateBuiltinRoleDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "roles"
+        ]
+      }
+    },
+    "/api/v1/roles/{id}": {
+      "patch": {
+        "operationId": "updateRole",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateRoleDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "roles"
+        ]
+      },
+      "delete": {
+        "operationId": "deleteRole",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "roles"
+        ]
+      }
+    },
+    "/api/v1/projects/{projectKey}/role-options": {
+      "get": {
+        "operationId": "listRoleOptions",
+        "parameters": [
+          {
+            "name": "projectKey",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "roles"
+        ]
+      }
+    },
     "/api/v1/workflow-templates": {
       "get": {
         "operationId": "listWorkflowTemplates",
@@ -300,6 +487,29 @@
                 }
               }
             }
+          }
+        },
+        "tags": [
+          "workflow"
+        ]
+      }
+    },
+    "/api/v1/projects/{projectKey}/workflow/runtime": {
+      "get": {
+        "operationId": "getRuntimeWorkflow",
+        "parameters": [
+          {
+            "name": "projectKey",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
           }
         },
         "tags": [
@@ -549,6 +759,29 @@
         },
         "responses": {
           "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "projects"
+        ]
+      }
+    },
+    "/api/v1/projects/{projectKey}/members/options": {
+      "get": {
+        "operationId": "listMemberOptions",
+        "parameters": [
+          {
+            "name": "projectKey",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
             "description": ""
           }
         },
@@ -3144,6 +3377,248 @@
           }
         }
       },
+      "CreateRoleDto": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64,
+            "pattern": "/^[a-z][a-z0-9]*(-[a-z0-9]+)*$/"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "description": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 1000
+          },
+          "permissions": {
+            "type": "string",
+            "enum": [
+              "dashboard.view",
+              "project.view",
+              "project.info.view",
+              "project.info.edit",
+              "project.members.view",
+              "project.members.create",
+              "project.members.edit",
+              "project.members.delete",
+              "project.summary.view",
+              "project.backlog.view",
+              "project.board.view",
+              "issue.view",
+              "issue.create",
+              "issue.edit",
+              "issue.delete",
+              "issue.delete.any",
+              "issue.transition",
+              "issue.triage",
+              "issue.comment",
+              "issue.links.edit",
+              "workflow.bypass",
+              "period.view",
+              "period.create",
+              "period.edit",
+              "period.delete",
+              "period.start",
+              "period.complete",
+              "testcase.view",
+              "testcase.create",
+              "testcase.edit",
+              "testcase.delete",
+              "testcase.import",
+              "testcase.export",
+              "testcase.bug.link",
+              "testcase.category.manage",
+              "requirement.create",
+              "requirement.edit",
+              "requirement.delete",
+              "settings.view",
+              "settings.workflow.view",
+              "settings.workflow.edit",
+              "settings.general.view",
+              "settings.general.edit",
+              "settings.labels.view",
+              "settings.labels.edit",
+              "apikey.view",
+              "apikey.manage",
+              "report.view",
+              "report.issue.create",
+              "attachment.view",
+              "attachment.create"
+            ],
+            "uniqueItems": true
+          }
+        },
+        "required": [
+          "key",
+          "name",
+          "permissions"
+        ]
+      },
+      "UpdateBuiltinRoleDto": {
+        "type": "object",
+        "properties": {
+          "permissions": {
+            "type": "string",
+            "enum": [
+              "dashboard.view",
+              "project.view",
+              "project.info.view",
+              "project.info.edit",
+              "project.members.view",
+              "project.members.create",
+              "project.members.edit",
+              "project.members.delete",
+              "project.summary.view",
+              "project.backlog.view",
+              "project.board.view",
+              "issue.view",
+              "issue.create",
+              "issue.edit",
+              "issue.delete",
+              "issue.delete.any",
+              "issue.transition",
+              "issue.triage",
+              "issue.comment",
+              "issue.links.edit",
+              "workflow.bypass",
+              "period.view",
+              "period.create",
+              "period.edit",
+              "period.delete",
+              "period.start",
+              "period.complete",
+              "testcase.view",
+              "testcase.create",
+              "testcase.edit",
+              "testcase.delete",
+              "testcase.import",
+              "testcase.export",
+              "testcase.bug.link",
+              "testcase.category.manage",
+              "requirement.create",
+              "requirement.edit",
+              "requirement.delete",
+              "settings.view",
+              "settings.workflow.view",
+              "settings.workflow.edit",
+              "settings.general.view",
+              "settings.general.edit",
+              "settings.labels.view",
+              "settings.labels.edit",
+              "apikey.view",
+              "apikey.manage",
+              "report.view",
+              "report.issue.create",
+              "attachment.view",
+              "attachment.create"
+            ],
+            "uniqueItems": true
+          },
+          "key": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64,
+            "pattern": "/^[a-z][a-z0-9]*(-[a-z0-9]+)*$/"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "description": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 1000
+          }
+        },
+        "required": [
+          "permissions"
+        ]
+      },
+      "UpdateRoleDto": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64,
+            "pattern": "/^[a-z][a-z0-9]*(-[a-z0-9]+)*$/"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "description": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 1000
+          },
+          "permissions": {
+            "type": "string",
+            "enum": [
+              "dashboard.view",
+              "project.view",
+              "project.info.view",
+              "project.info.edit",
+              "project.members.view",
+              "project.members.create",
+              "project.members.edit",
+              "project.members.delete",
+              "project.summary.view",
+              "project.backlog.view",
+              "project.board.view",
+              "issue.view",
+              "issue.create",
+              "issue.edit",
+              "issue.delete",
+              "issue.delete.any",
+              "issue.transition",
+              "issue.triage",
+              "issue.comment",
+              "issue.links.edit",
+              "workflow.bypass",
+              "period.view",
+              "period.create",
+              "period.edit",
+              "period.delete",
+              "period.start",
+              "period.complete",
+              "testcase.view",
+              "testcase.create",
+              "testcase.edit",
+              "testcase.delete",
+              "testcase.import",
+              "testcase.export",
+              "testcase.bug.link",
+              "testcase.category.manage",
+              "requirement.create",
+              "requirement.edit",
+              "requirement.delete",
+              "settings.view",
+              "settings.workflow.view",
+              "settings.workflow.edit",
+              "settings.general.view",
+              "settings.general.edit",
+              "settings.labels.view",
+              "settings.labels.edit",
+              "apikey.view",
+              "apikey.manage",
+              "report.view",
+              "report.issue.create",
+              "attachment.view",
+              "attachment.create"
+            ],
+            "uniqueItems": true
+          }
+        }
+      },
       "WorkflowStatusInput": {
         "type": "object",
         "properties": {
@@ -3368,14 +3843,17 @@
               "viewer"
             ]
           },
+          "roleId": {
+            "type": "number",
+            "minimum": 1
+          },
           "joinedAt": {
             "type": "string",
             "pattern": "/^\\d{4}-\\d{2}-\\d{2}$/"
           }
         },
         "required": [
-          "userId",
-          "role"
+          "userId"
         ]
       },
       "UpdateMemberDto": {
@@ -3389,11 +3867,12 @@
               "tester",
               "viewer"
             ]
+          },
+          "roleId": {
+            "type": "number",
+            "minimum": 1
           }
-        },
-        "required": [
-          "role"
-        ]
+        }
       },
       "LeaveMemberDto": {
         "type": "object",

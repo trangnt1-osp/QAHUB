@@ -1,6 +1,6 @@
 import { Body, Controller, Get, Param, Post, Put } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
-import { CurrentProject, CurrentUser, AuthUser, ProjectContext, ProjectRole } from '../common/decorators';
+import { CurrentProject, CurrentUser, AuthUser, ProjectContext, ProjectPermission, ProjectRole } from '../common/decorators';
 import { ApplyTemplateDto, SaveWorkflowDto } from './workflows.dto';
 import { WorkflowsService } from './workflows.service';
 
@@ -16,6 +16,12 @@ export class WorkflowsController {
   @ProjectRole('viewer') @Get('projects/:projectKey/workflow')
   getWorkflow(@CurrentProject() p: ProjectContext) {
     return this.workflows.get(p.id);
+  }
+
+  @ProjectRole('viewer') @ProjectPermission(['issue.view', 'settings.workflow.view']) @Get('projects/:projectKey/workflow/runtime')
+  async getRuntimeWorkflow(@CurrentProject() p: ProjectContext) {
+    const snapshot = await this.workflows.get(p.id);
+    return { ...snapshot, statuses: snapshot.statuses.filter((status) => !status.isArchived).map(({ issueCount: _count, ...status }) => status) };
   }
 
   @ProjectRole('admin') @Put('projects/:projectKey/workflow')

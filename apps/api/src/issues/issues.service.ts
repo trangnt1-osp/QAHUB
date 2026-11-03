@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { ERROR_CODES, ProjectRole as ProjectRoleName } from '@ospm/shared';
+import { ERROR_CODES, type Permission, ProjectRole as ProjectRoleName } from '@ospm/shared';
 import { Prisma } from '@prisma/client';
 import { ActivityService } from '../activity/activity.service';
 import { parseId } from '../common/bigint';
@@ -13,7 +13,7 @@ import {
   allocateIssueNumber, doc, findIssueByKey, issueInclude, issueKeyOf, rankAtEnd, recordStatusChange, safeRankBetween, toIssueDto,
 } from './issue-core';
 
-type Actor = Pick<AuthUser, 'id'> & { systemRole?: string };
+type Actor = Pick<AuthUser, 'id'> & { systemRole?: string; permissions?: Permission[] };
 
 @Injectable()
 export class IssuesService {
@@ -247,7 +247,7 @@ export class IssuesService {
       const issue = await findIssueByKey(tx, issueKey);
       const to = await tx.workflowStatus.findFirst({ where: { id: BigInt(dto.toStatusId), projectId: issue.projectId, isArchived: false } });
       if (!to) throw unprocessable(ERROR_CODES.TRANSITION_NOT_ALLOWED, 'Trạng thái đích không tồn tại');
-      const isAdmin = role === 'admin';
+      const isAdmin = actor.permissions?.includes('workflow.bypass') ?? role === 'admin';
       if (issue.status.category === 'triage' && !isAdmin) {
         throw unprocessable(ERROR_CODES.TRIAGE_REQUIRED, 'Bug cần được duyệt (Accept/Reject/Duplicate) trước');
       }
@@ -361,7 +361,7 @@ export class IssuesService {
         const changes: Record<string, [unknown, unknown]> = {};
         const extra: Prisma.IssueUncheckedUpdateManyInput = {};
         if (dto.set.deleted) {
-          if (project.role !== 'admin' && issue.reporterId !== actor.id) throw forbidden('Chỉ xóa được item do bạn tạo');
+          if (!(project.permissions?.includes('issue.delete.any') ?? project.role === 'admin') && issue.reporterId !== actor.id) throw forbidden('Chỉ xóa được item do bạn tạo');
           await tx.issue.update({ where: { id: issue.id }, data: { deletedAt: new Date(), version: { increment: 1 } } });
           await this.activity.log({ projectId: project.id, entity: 'issue', entityId: key, action: 'deleted', actorId: actor.id }, tx);
           out.push(key);
@@ -386,9 +386,10 @@ export class IssuesService {
         if (dto.set.statusId) {
           const to = await tx.workflowStatus.findFirst({ where: { id: BigInt(dto.set.statusId), projectId: project.id, isArchived: false } });
           if (!to) throw unprocessable(ERROR_CODES.TRANSITION_NOT_ALLOWED, 'Trạng thái đích không tồn tại');
-          if (issue.status.category === 'triage' && project.role !== 'admin') throw unprocessable(ERROR_CODES.TRIAGE_REQUIRED, `${key}: cần duyệt bug trước`);
+          const bypass = project.permissions?.includes('workflow.bypass') ?? project.role === 'admin';
+          if (issue.status.category === 'triage' && !bypass) throw unprocessable(ERROR_CODES.TRIAGE_REQUIRED, `${key}: cần duyệt bug trước`);
           if (issue.statusId !== to.id) {
-            if (!(await this.workflows.isTransitionAllowed(tx, project.id, issue.statusId, to.id)) && project.role !== 'admin') {
+            if (!(await this.workflows.isTransitionAllowed(tx, project.id, issue.statusId, to.id)) && !bypass) {
               throw unprocessable(ERROR_CODES.TRANSITION_NOT_ALLOWED, `${key}: không được chuyển từ "${issue.status.name}" sang "${to.name}"`);
             }
             await this.moveStatus(tx, issue, to, actor.id, extra);
@@ -410,7 +411,7 @@ export class IssuesService {
 
   async remove(issueKey: string, actor: Actor, role: ProjectRoleName) {
     const issue = await findIssueByKey(this.prisma, issueKey);
-    if (role !== 'admin' && issue.reporterId !== actor.id) throw forbidden('Chỉ xóa được item do bạn tạo');
+    if (!(actor.permissions?.includes('issue.delete.any') ?? role === 'admin') && issue.reporterId !== actor.id) throw forbidden('Chỉ xóa được item do bạn tạo');
     await this.prisma.$transaction(async (tx) => {
       await tx.issue.update({ where: { id: issue.id }, data: { deletedAt: new Date(), version: { increment: 1 } } });
       await this.activity.log({ projectId: issue.projectId, entity: 'issue', entityId: issueKey, action: 'deleted', actorId: actor.id }, tx);

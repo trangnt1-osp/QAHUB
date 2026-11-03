@@ -4,3 +4,4 @@ export * from './lexorank';
 export * from './ingest';
 export * from './constants';
 export * from './workflow-templates';
+export * from './permissions';

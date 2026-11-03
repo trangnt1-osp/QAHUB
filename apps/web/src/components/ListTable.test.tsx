@@ -4,6 +4,18 @@ import { ListTable } from './ListTable';
 const rows = Array.from({ length: 23 }, (_, index) => ({ id: index + 1, name: `Item ${index + 1}` }));
 const columns = [{ title: 'Name', dataIndex: 'name', sorter: (a: { id: number }, b: { id: number }) => a.id - b.id }];
 
+it('formats numeric cells without changing values used by sorting and custom cells', () => {
+  render(<ListTable rowKey="id" dataSource={[{ id: 1, name: 'ELMS-1234', count: 1234.5 }]} columns={[
+    { title: 'Code', dataIndex: 'name' },
+    { title: 'Count', dataIndex: 'count' },
+    { title: 'Custom', render: () => <button>Keep action</button> },
+    { title: 'Hidden', dataIndex: 'count', render: () => null },
+  ]} />);
+  expect(screen.getByText('1.234,5')).toBeInTheDocument();
+  expect(screen.getByText('ELMS-1234')).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Keep action' })).toBeInTheDocument();
+});
+
 // jsdom has no pseudo-element layout; rc-table only uses it to measure scrollbar size.
 const computedStyle = window.getComputedStyle.bind(window);
 beforeAll(() => { vi.spyOn(window, 'getComputedStyle').mockImplementation((element) => computedStyle(element)); });

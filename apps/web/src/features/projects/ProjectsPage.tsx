@@ -1,3 +1,4 @@
+import { fmtNumber } from '../../lib/number';
 import { EditOutlined, PlusOutlined } from '@ant-design/icons';
 import { ActionIconButton } from '../../components/ActionIconButton';
 import { App, Badge, Button, Form, Input, Modal, Select, Tag } from 'antd';
@@ -17,6 +18,7 @@ import { fmtDate } from '../../lib/date';
 import { useAuth } from '../auth/authStore';
 import { EditProjectModal } from './EditProjectModal';
 import { ProjectDateFields, projectDatePayload } from './ProjectDateFields';
+import { projectHomePath } from '../../lib/permissions';
 
 export function ProjectsPage() {
   const projectList = useUi((s) => s.projectList);
@@ -24,6 +26,7 @@ export function ProjectsPage() {
   const root = useRef<HTMLDivElement>(null);
   const { data = [], isLoading, error, refetch } = useQuery<ProjectRow[]>({ queryKey: ['projects'], queryFn: () => listProjects() });
   const isAdmin = useAuth((s) => s.isSystemAdmin());
+  const { hasPermission } = useAuth();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<ProjectRow | null>(null);
   const nav = useNavigate();
@@ -44,24 +47,24 @@ export function ProjectsPage() {
       <QueryBoundary isLoading={isLoading} error={error} refetch={refetch} empty={!data.length} emptyTitle="Bạn chưa tham gia dự án nào">
         <ListTable<ProjectRow> rowKey="id" dataSource={data} size="middle" style={{ background: '#fff' }}
           listPage={{ ...projectList, onChange: (current, pageSize) => setProjectList({ current, pageSize, scrollTop: 0 }) }}
-          onRow={(r) => ({ onClick: () => nav(`/projects/${r.key}/summary`), style: { cursor: 'pointer' } })}
+          onRow={(r) => ({ onClick: () => nav(projectHomePath(r.key, hasPermission)), style: { cursor: 'pointer' } })}
           columns={[
-            { title: 'Key', dataIndex: 'key', width: 90, render: (k) => <Link to={`/projects/${k}/summary`} onClick={(e) => e.stopPropagation()}><b>{k}</b></Link> },
+            { title: 'Key', dataIndex: 'key', width: 90, render: (k) => <Link to={projectHomePath(k, hasPermission)} onClick={(e) => e.stopPropagation()}><b>{k}</b></Link> },
             { title: 'Tên', dataIndex: 'name' },
             { title: 'Ngày bắt đầu', dataIndex: 'startDate', render: fmtDate },
             { title: 'Ngày kết thúc', dataIndex: 'endDate', render: fmtDate },
             { title: 'Lead', dataIndex: 'lead', render: (l) => (l ? <UserAvatar user={l} showName /> : '—') },
             { title: 'Item mở', dataIndex: 'openIssues', align: 'right' },
-            { title: 'Bug auto chờ duyệt', dataIndex: 'pendingReview', align: 'right', render: (n) => (n ? <Badge count={n} color="#722ed1" /> : 0) },
+            { title: 'Bug auto chờ duyệt', dataIndex: 'pendingReview', align: 'right', render: (n) => (n ? <Badge count={n > 99 ? '99+' : fmtNumber(n)} title={fmtNumber(n)} color="#722ed1" /> : 0) },
             { title: 'Sprint / Phase đang chạy', dataIndex: 'activeSprint', render: (s) => (s ? <Tag color="blue">{s.name}</Tag> : <span className="muted">—</span>) },
             { title: 'Ngày tạo', dataIndex: 'createdAt', render: fmtDate },
-            { title: 'Thao tác', render: (_, project) => project.myRole === 'admin' ? (
+            { title: 'Thao tác', render: (_, project) => hasPermission(project.key, 'project.info.edit') ? (
               <ActionIconButton label="Sửa" icon={<EditOutlined />} onClick={() => setEditing(project)} />
             ) : null },
           ]} />
       </QueryBoundary>
-      <CreateProjectModal open={open} onClose={() => setOpen(false)} />
-      {editing && <EditProjectModal key={editing.id} project={editing} onClose={() => setEditing(null)} />}
+      {isAdmin && open && <CreateProjectModal open onClose={() => setOpen(false)} />}
+      {editing && hasPermission(editing.key, 'project.info.edit') && <EditProjectModal key={editing.id} project={editing} onClose={() => setEditing(null)} />}
     </div>
   );
 }

@@ -3,7 +3,7 @@ import { Alert, Button, Card, Form, Input, Typography } from 'antd';
 import { useState } from 'react';
 import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { errorMessage } from '../../api/http';
-import { useAuth } from './authStore';
+import { landingPage, useAuth } from './authStore';
 import loginPenguin from '../../assets/images/login-penguin.png';
 
 export default function LoginPage() {
@@ -12,7 +12,7 @@ export default function LoginPage() {
   const loc = useLocation() as { state?: { from?: string } };
   const [error, setError] = useState<string>();
   const [loading, setLoading] = useState(false);
-  if (user) return <Navigate to={loc.state?.from ?? '/dashboard'} replace />;
+  if (user) return <Navigate to={loc.state?.from ?? landingPage()} replace />;
   return (
     <div style={{ minHeight: '100dvh', display: 'grid', placeItems: 'center', padding: '24px 16px', boxSizing: 'border-box', background: 'linear-gradient(135deg,#ffe4ec,#fff0f5)' }}>
       <div style={{ width: 'min(380px, 100%)' }}>
@@ -24,7 +24,7 @@ export default function LoginPage() {
         {error && <Alert type="error" message={error} showIcon style={{ marginBottom: 16 }} />}
         <Form layout="vertical" onFinish={async (v) => {
           setLoading(true); setError(undefined);
-          try { await login(v.email, v.password); nav(loc.state?.from ?? '/dashboard', { replace: true }); }
+          try { await login(v.email, v.password); nav(loc.state?.from ?? landingPage(), { replace: true }); }
           catch (e) { setError(errorMessage(e, 'Đăng nhập thất bại')); }
           finally { setLoading(false); }
         }}>

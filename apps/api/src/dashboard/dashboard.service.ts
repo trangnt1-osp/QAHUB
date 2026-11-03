@@ -1,7 +1,9 @@
 import { Injectable } from '@nestjs/common';
+import { BUILTIN_ROLE_PERMISSIONS, normalizePermissions, type ProjectRole } from '@ospm/shared';
 import { AuthUser } from '../common/decorators';
 import { PrismaService } from '../common/prisma.service';
 import { SummaryService } from '../summary/summary.service';
+import { builtinPermissionMap } from '../roles/builtin-roles';
 
 @Injectable()
 export class DashboardService {
@@ -9,11 +11,15 @@ export class DashboardService {
 
   async get(user: AuthUser) {
     const isAdmin = user.systemRole === 'admin';
+    const builtins = isAdmin ? BUILTIN_ROLE_PERMISSIONS : await builtinPermissionMap(this.prisma);
     const memberships = isAdmin
-      ? (await this.prisma.project.findMany({ where: { deletedAt: null }, select: { id: true } })).map((p) => ({ projectId: p.id, role: 'admin' }))
-      : await this.prisma.projectMember.findMany({ where: { userId: user.id, leftAt: null, project: { deletedAt: null } }, select: { projectId: true, role: true } });
-    const projectIds = memberships.map((m) => m.projectId);
-    const triageIds = memberships.filter((m) => m.role === 'tester' || m.role === 'admin').map((m) => m.projectId);
+      ? (await this.prisma.project.findMany({ where: { deletedAt: null }, select: { id: true } })).map((p) => ({ projectId: p.id, permissions: BUILTIN_ROLE_PERMISSIONS.admin }))
+      : (await this.prisma.projectMember.findMany({ where: { userId: user.id, leftAt: null, project: { deletedAt: null } }, include: { roleDefinition: true } }))
+        .map((member) => ({ projectId: member.projectId, permissions: member.roleId ? normalizePermissions(member.roleDefinition?.permissions ?? []) : builtins[member.role as ProjectRole] ?? [] }));
+    const visible = memberships.filter((member) => member.permissions.includes('dashboard.view'));
+    const projectIds = visible.filter((member) => member.permissions.includes('issue.view')).map((member) => member.projectId);
+    const triageIds = visible.filter((member) => member.permissions.includes('issue.triage')).map((member) => member.projectId);
+    const reportIds = visible.filter((member) => member.permissions.includes('report.view')).map((member) => member.projectId);
 
     const [cards, pending, mine, runs, activity] = await Promise.all([
       this.summary.cards(projectIds),
@@ -30,7 +36,7 @@ export class DashboardService {
         WHERE i.assignee_id = ${user.id} AND i.project_id = ANY(${projectIds}) AND i.deleted_at IS NULL AND s.category NOT IN ('done', 'triage') AND p.deleted_at IS NULL
         ORDER BY p.key, array_position(ARRAY['highest','high','medium','low','lowest'], i.priority), i.updated_at DESC`,
       this.prisma.automationRun.findMany({
-        where: { projectId: { in: projectIds } }, orderBy: { id: 'desc' }, take: 5,
+        where: { projectId: { in: reportIds } }, orderBy: { id: 'desc' }, take: 5,
         include: { project: { select: { key: true, name: true } } },
       }),
       this.summary.recentActivity(projectIds, undefined, 20),

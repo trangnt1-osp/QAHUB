@@ -3,6 +3,7 @@ import 'dayjs/locale/vi';
 import relativeTime from 'dayjs/plugin/relativeTime';
 import timezone from 'dayjs/plugin/timezone';
 import utc from 'dayjs/plugin/utc';
+import { fmtNumber } from './number';
 
 dayjs.extend(utc);
 dayjs.extend(timezone);
@@ -29,5 +30,5 @@ export const fmtEstimate = (minutes?: number | null) => {
   if (!minutes) return '';
   const h = Math.floor(minutes / 60);
   const m = minutes % 60;
-  return `${h ? `${h}h` : ''}${m ? `${m}m` : ''}`;
+  return `${h ? `${fmtNumber(h)}h` : ''}${m ? `${fmtNumber(m)}m` : ''}`;
 };

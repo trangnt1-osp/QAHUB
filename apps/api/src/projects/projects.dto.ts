@@ -1,5 +1,5 @@
 import { DEFAULT_TEST_CATEGORIES, PROJECT_KEY_REGEX, PROJECT_ROLES, ProjectRole } from '@ospm/shared';
-import { IsBoolean, IsDateString, IsIn, IsInt, IsOptional, IsString, Matches, MinLength, ValidateIf } from 'class-validator';
+import { IsBoolean, IsDateString, IsIn, IsInt, IsOptional, IsString, Matches, Min, MinLength, ValidateIf } from 'class-validator';
 
 export class CreateProjectDto {
   @ValidateIf((_object, value) => value !== undefined) @IsIn(['sprint', 'phase']) trackingMode?: 'sprint' | 'phase';
@@ -23,7 +23,8 @@ export class UpdateProjectDto {
 
 export class AddMemberDto {
   @IsInt() userId: number;
-  @IsIn(PROJECT_ROLES as unknown as string[]) role: ProjectRole;
+  @ValidateIf((_object, value) => value !== undefined) @IsIn(PROJECT_ROLES as unknown as string[]) role?: ProjectRole;
+  @ValidateIf((_object, value) => value !== undefined) @IsInt() @Min(1) roleId?: number;
   @IsOptional() @Matches(/^\d{4}-\d{2}-\d{2}$/) @IsDateString({ strict: true }) joinedAt?: string;
 }
 
@@ -36,7 +37,8 @@ export class LeaveMemberDto {
 }
 
 export class UpdateMemberDto {
-  @IsIn(PROJECT_ROLES as unknown as string[]) role: ProjectRole;
+  @ValidateIf((_object, value) => value !== undefined) @IsIn(PROJECT_ROLES as unknown as string[]) role?: ProjectRole;
+  @ValidateIf((_object, value) => value !== undefined) @IsInt() @Min(1) roleId?: number;
 }
 
 export class UpdateSettingsDto {

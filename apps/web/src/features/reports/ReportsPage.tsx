@@ -1,3 +1,4 @@
+import { fmtNumber } from '../../lib/number';
 import { LinkOutlined } from '@ant-design/icons';
 import { Card, DatePicker, Input, Select, Space, Tag, Tooltip } from 'antd';
 import { ListTable } from '../../components/ListTable';
@@ -16,12 +17,13 @@ export const RUN_STATUS_COLOR: Record<string, string> = { receiving: 'default', 
 
 export function RatioBar({ r }: { r: { total: number; passed: number; failed: number; flaky: number; skipped: number } }) {
   const t = Math.max(1, r.total);
-  const seg = (n: number, c: string, label: string) => n > 0 && <Tooltip title={`${label}: ${n}`}><div style={{ width: `${(n / t) * 100}%`, background: c, height: 10 }} /></Tooltip>;
+  const seg = (n: number, c: string, label: string) => n > 0 && <Tooltip title={`${label}: ${fmtNumber(n)}`}><div style={{ width: `${(n / t) * 100}%`, background: c, height: 10 }} /></Tooltip>;
   return <div style={{ display: 'flex', width: 140, borderRadius: 3, overflow: 'hidden', background: '#f0f0f0' }}>{seg(r.passed, '#52c41a', 'passed')}{seg(r.flaky, '#faad14', 'flaky')}{seg(r.failed, '#f5222d', 'failed')}{seg(r.skipped, '#bfbfbf', 'skipped')}</div>;
 }
 
 export function ReportsPage() {
-  const projects = useAuth((s) => s.projects);
+  const { projects: allProjects, hasPermission } = useAuth();
+  const projects = allProjects.filter((project) => hasPermission(project.projectKey, 'report.view'));
   const [sp, setSp] = useSearchParams();
   const projectKey = sp.get('project') ?? projects[0]?.projectKey;
   const [branch, setBranch] = useState<string>();
@@ -48,7 +50,7 @@ export function ReportsPage() {
             <Card size="small" title="Tỉ lệ pass — 20 lần chạy gần nhất" style={{ marginBottom: 12 }}>
               <div style={{ height: 160 }}>
                 <ResponsiveContainer>
-                  <BarChart data={chart}><CartesianGrid strokeDasharray="3 3" vertical={false} /><XAxis dataKey="name" fontSize={12} /><YAxis domain={[0, 100]} fontSize={12} unit="%" /><RTooltip formatter={(v) => `${v}%`} /><Bar dataKey="passRate" fill="#52c41a" isAnimationActive={false} /></BarChart>
+                  <BarChart data={chart}><CartesianGrid strokeDasharray="3 3" vertical={false} /><XAxis dataKey="name" fontSize={12} /><YAxis tickFormatter={(value) => typeof value === 'number' ? fmtNumber(value) : value} domain={[0, 100]} fontSize={12} unit="%" /><RTooltip formatter={(v) => typeof v === 'number' ? `${fmtNumber(v)}%` : v} /><Bar dataKey="passRate" fill="#52c41a" isAnimationActive={false} /></BarChart>
                 </ResponsiveContainer>
               </div>
             </Card>
@@ -63,9 +65,9 @@ export function ReportsPage() {
                 { title: 'Môi trường', dataIndex: 'environment', width: 110 },
                 { title: 'Branch @ commit', render: (_, r: any) => <span>{r.branch ?? '—'}{r.commitSha && <span className="muted"> @ {r.commitSha}</span>}</span> },
                 { title: 'Xử lý', dataIndex: 'status', width: 110, render: (s) => <Tag color={RUN_STATUS_COLOR[s]}>{s}</Tag> },
-                { title: 'passed / failed / flaky / skipped', width: 230, render: (_, r: any) => <Space><RatioBar r={r} /><span className="muted">{r.passed}/{r.failed}/{r.flaky}/{r.skipped}</span></Space> },
-                { title: 'Bug mới / cập nhật', width: 130, render: (_, r: any) => <span>{r.bugsCreated} / {r.bugsUpdated}</span> },
-                { title: 'Thời lượng', dataIndex: 'durationMs', width: 100, render: (d) => (d ? `${Math.round(Number(d) / 1000)}s` : '—') },
+                { title: 'passed / failed / flaky / skipped', width: 230, render: (_, r: any) => <Space><RatioBar r={r} /><span className="muted">{fmtNumber(r.passed)}/{fmtNumber(r.failed)}/{fmtNumber(r.flaky)}/{fmtNumber(r.skipped)}</span></Space> },
+                { title: 'Bug mới / cập nhật', width: 130, render: (_, r: any) => <span>{fmtNumber(r.bugsCreated)} / {fmtNumber(r.bugsUpdated)}</span> },
+                { title: 'Thời lượng', dataIndex: 'durationMs', width: 100, render: (d) => (d != null ? `${fmtNumber(Math.round(Number(d) / 1000))}s` : '—') },
                 { title: 'CI', dataIndex: 'ciUrl', width: 50, render: (u) => u && <a href={u} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}><LinkOutlined /></a> },
               ]} />
           </>

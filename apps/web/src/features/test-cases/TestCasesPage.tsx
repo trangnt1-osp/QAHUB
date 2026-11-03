@@ -1,5 +1,5 @@
 import { PlusOutlined, SettingOutlined } from '@ant-design/icons';
-import { App, Button, Card, Checkbox, Dropdown, Form, Input, Modal, Popconfirm, Progress, Select, Space, Splitter, Tag, Tree, Typography } from 'antd';
+import { App, Button, Card, Checkbox, Dropdown, Form, Input, Modal, Popconfirm, Progress, Select, Space, Splitter, Tag, Tooltip, Tree, Typography } from 'antd';
 import type { DataNode } from 'antd/es/tree';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useMemo, useRef, useState } from 'react';
@@ -9,12 +9,13 @@ import { bulkUpdateTestCases, createRequirement, createTestCase, getTestCaseSumm
 import { errorMessage } from '../../api/http';
 import { useTestCategories } from '../../api/hooks';
 import { EmptyState, ErrorState } from '../../components/EmptyState';
-import { useAuth, useCan } from '../auth/authStore';
+import { useAuth, usePermission } from '../auth/authStore';
 import { ExportButton, ImportButton } from './ImportExport';
 import { waitForJob } from './jobs';
 import { GridHandle, TestCaseGrid } from './TestCaseGrid';
 import { TestCaseDrawer } from './TestCaseDrawer';
 import { STATUS_HEX, STATUS_LABEL } from './labels';
+import { fmtNumber } from '../../lib/number';
 
 const ALL_COLS = [['priority', 'Priority'], ['category', 'Category'], ['preconditions', 'Pre-conditions'], ['stepCount', 'Số bước'], ['status', 'Status'], ['bugs', 'Link Bug'], ['notes', 'Notes'], ['updatedAt', 'Cập nhật']] as const;
 const TREE_WIDTH_KEY = 'tc-tree-width-percent';
@@ -32,8 +33,12 @@ export default function TestCasesPage() {
   const qc = useQueryClient();
   const { message } = App.useApp();
   const me = useAuth((s) => s.user);
-  const canEdit = useCan(projectKey, 'developer');
-  const canDelete = useCan(projectKey, 'tester');
+  const canEdit = usePermission(projectKey, 'testcase.edit');
+  const canCreate = usePermission(projectKey, 'testcase.create');
+  const canImport = usePermission(projectKey, 'testcase.import');
+  const canExport = usePermission(projectKey, 'testcase.export');
+  const canCreateRequirement = usePermission(projectKey, 'requirement.create');
+  const canDelete = usePermission(projectKey, 'testcase.delete');
   const { data: categories = [] } = useTestCategories(projectKey);
   const functionId = sp.get('functionId') ?? undefined;
   const epicId = sp.get('epicId') ?? undefined;
@@ -65,10 +70,10 @@ export default function TestCasesPage() {
     const match = (s: string) => !treeQ || s.toLowerCase().includes(treeQ.toLowerCase());
     const fnNode = (f: any): DataNode => ({
       key: `f:${f.id}`, isLeaf: true,
-      title: (<div style={{ display: 'flex', flexDirection: 'column' }}><div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}><span>{f.code} · {f.name}</span><span className="muted">{f.counts.total}</span></div><Progress percent={f.progress} size="small" showInfo={false} strokeColor="#52c41a" /></div>),
+      title: (<div style={{ display: 'flex', flexDirection: 'column' }}><div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}><span>{f.code} · {f.name}</span><span className="muted" style={{ whiteSpace: 'nowrap' }}>{fmtNumber(f.counts.total)} TC</span></div><Tooltip title={`Đã test: ${fmtNumber(f.counts.passed + f.counts.failed)}/${fmtNumber(f.counts.total)} TC. (Passed + Failed) / Tổng TC.`}><Progress aria-label={`Đã test ${f.code}`} percent={f.progress} size="small" status="normal" format={(percent) => `${fmtNumber(percent)}%`} strokeColor="#52c41a" /></Tooltip></div>),
     });
     const epics = (tree.data?.epics ?? []).map((e: any) => ({ ...e, functions: e.functions.filter((f: any) => match(`${f.code} ${f.name}`) || match(`${e.code} ${e.name}`)) })).filter((e: any) => !treeQ || e.functions.length || match(`${e.code} ${e.name}`));
-    const nodes: DataNode[] = epics.map((e: any) => ({ key: `e:${e.id}`, title: <span><b>{e.code}</b> · {e.name} <span className="muted">({e.counts.total})</span></span>, children: e.functions.map(fnNode) }));
+    const nodes: DataNode[] = epics.map((e: any) => ({ key: `e:${e.id}`, title: <span><b>{e.code}</b> · {e.name} <span className="muted">({fmtNumber(e.counts.total)})</span></span>, children: e.functions.map(fnNode) }));
     const un = (tree.data?.unassigned ?? []).filter((f: any) => match(`${f.code} ${f.name}`));
     if (un.length) nodes.push({ key: 'unassigned', title: <i>Chưa thuộc epic</i>, children: un.map(fnNode), selectable: false });
     return [{ key: 'all', title: <b>Tất cả test case</b>, children: nodes }];
@@ -82,14 +87,19 @@ export default function TestCasesPage() {
   };
 
   const refreshAll = useCallback(() => { setReload((r) => r + 1); void qc.invalidateQueries({ queryKey: ['requirements', projectKey] }); }, [qc, projectKey]);
+  const refreshCounts = useCallback(() => {
+    void qc.invalidateQueries({ queryKey: ['requirements', projectKey] });
+    void qc.invalidateQueries({ queryKey: ['tc-summary', projectKey] });
+  }, [qc, projectKey]);
   const effectiveIds = allIds ?? selected;
   const filters = useMemo(() => ({ functionId, epicId, q: q || undefined, status, categoryId, priority }), [functionId, epicId, q, status, categoryId, priority]);
 
   const bulk = async (set: Record<string, unknown>) => {
+    if (set.deleted ? !canDelete : !canEdit) return;
     try {
       const r = await bulkUpdateTestCases(projectKey, { ids: effectiveIds.map(String), set: set as any });
-      if (r.async) { message.loading({ content: `Đang cập nhật ${r.total} dòng…`, key: 'bulk', duration: 0 }); await waitForJob(r.jobId); message.success({ content: 'Đã cập nhật', key: 'bulk' }); }
-      else message.success(`Đã cập nhật ${r.updated} dòng`);
+      if (r.async) { message.loading({ content: `Đang cập nhật ${fmtNumber(r.total)} dòng…`, key: 'bulk', duration: 0 }); await waitForJob(r.jobId); message.success({ content: 'Đã cập nhật', key: 'bulk' }); }
+      else message.success(`Đã cập nhật ${fmtNumber(r.updated)} dòng`);
       setSelected([]); setAllIds(null); grid.current?.api()?.deselectAll(); refreshAll();
     } catch (e) { message.error({ content: errorMessage(e), key: 'bulk' }); }
   };
@@ -109,7 +119,7 @@ export default function TestCasesPage() {
       }}>
       <Splitter.Panel defaultSize={`${initialTreeWidth}%`} min="15%" max="50%" collapsible style={{ paddingRight: 8, overflow: 'hidden' }}>
       <Card size="small" styles={{ body: { padding: 8 } }} style={{ alignSelf: 'start' }} title="Epic / Function"
-        extra={canEdit && <Dropdown menu={{ items: [{ key: 'epic', label: 'Thêm epic', onClick: () => setReqOpen('epic') }, { key: 'fn', label: 'Thêm function', onClick: () => setReqOpen('function') }] }}><Button size="small" icon={<PlusOutlined />} /></Dropdown>}>
+        extra={canCreateRequirement && <Dropdown menu={{ items: [{ key: 'epic', label: 'Thêm epic', onClick: () => setReqOpen('epic') }, { key: 'fn', label: 'Thêm function', onClick: () => setReqOpen('function') }] }}><Button size="small" icon={<PlusOutlined />} /></Dropdown>}>
         <Input.Search size="small" allowClear placeholder="Tìm mã/tên function" style={{ marginBottom: 8 }} onChange={(e) => setTreeQ(e.target.value)} />
         <Tree virtual height={Math.max(300, window.innerHeight - 330)} treeData={treeData} selectedKeys={[selectKey]} defaultExpandAll key={`${treeQ}-${tree.data ? 'ready' : 'loading'}`} blockNode
           onSelect={(keys) => keys[0] && onSelectNode(String(keys[0]))} />
@@ -126,12 +136,12 @@ export default function TestCasesPage() {
               {selectedFn.traceRef && <Tag style={{ marginLeft: 8 }}>{selectedFn.traceRef}</Tag>}
               {selectedFn.sources?.map((s: string) => <a key={s} href={/^https?:/.test(s) ? s : undefined} target="_blank" rel="noreferrer" style={{ marginLeft: 8 }}>{s}</a>)}
             </div>
-          ) : <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 8 }}>{epicId ? 'Các function của epic đã chọn' : 'Toàn bộ test case của dự án'}</Typography.Text>}
+          ) : epicId ? <Typography.Text type="secondary" style={{ display: 'block', marginBottom: 8 }}>Các function của epic đã chọn</Typography.Text> : null}
           {sm && (
             <Space size="large" wrap data-testid="checklist-summary">
-              {TEST_CASE_STATUSES.map((s) => <span key={s}><span style={{ color: STATUS_HEX[s], fontWeight: 600 }}>{STATUS_LABEL[s]}</span>: {sm.totals[s === 'not_started' ? 'notStarted' : s]}</span>)}
-              <span>Total: <b>{sm.totals.total}</b></span>
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>Progress <Progress percent={sm.progress} size="small" style={{ width: 160 }} strokeColor="#52c41a" /></span>
+              {TEST_CASE_STATUSES.map((s) => <span key={s}><span style={{ color: STATUS_HEX[s], fontWeight: 600 }}>{STATUS_LABEL[s]}</span>: {fmtNumber(sm.totals[s === 'not_started' ? 'notStarted' : s])}</span>)}
+              <span>Total: <b>{fmtNumber(sm.totals.total)}</b></span>
+              <Tooltip title={`Đã test: ${fmtNumber(sm.totals.passed + sm.totals.failed)}/${fmtNumber(sm.totals.total)} TC. Chỉ tính Passed và Failed; Not Started, Blocked và N/A chưa tính là đã test.`}><span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>Đã test <Progress aria-label="Tiến độ test" percent={sm.progress} status="normal" format={(percent) => `${fmtNumber(percent)}%`} size="small" style={{ width: 160 }} strokeColor="#52c41a" /></span></Tooltip>
             </Space>
           )}
         </Card>
@@ -142,9 +152,9 @@ export default function TestCasesPage() {
           <Select mode="multiple" allowClear placeholder="Category" style={{ minWidth: 130 }} maxTagCount="responsive" value={categoryId} onChange={setCategoryId} options={categories.map((c) => ({ value: String(c.id), label: c.name }))} />
           <Select mode="multiple" allowClear placeholder="Priority" style={{ minWidth: 120 }} maxTagCount="responsive" value={priority} onChange={setPriority} options={TEST_CASE_PRIORITIES.map((p) => ({ value: p, label: p }))} />
           <div style={{ flex: 1 }} />
-          {canEdit && <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)}>Test case</Button>}
-          {canEdit && <ImportButton projectKey={projectKey} />}
-          <ExportButton projectKey={projectKey} functionId={functionId} />
+          {canCreate && <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreateOpen(true)}>Test case</Button>}
+          {canImport && <ImportButton projectKey={projectKey} />}
+          {canExport && <ExportButton projectKey={projectKey} functionId={functionId} />}
           <Dropdown trigger={['click']} dropdownRender={() => (
             <Card size="small"><Space direction="vertical">{ALL_COLS.map(([id, label]) => (
               <Checkbox key={id} checked={!hidden.includes(id)} onChange={(e) => { const n = e.target.checked ? hidden.filter((h) => h !== id) : [...hidden, id]; setHidden(n); localStorage.setItem('tc-hidden-cols', JSON.stringify(n)); }}>{label}</Checkbox>
@@ -152,42 +162,44 @@ export default function TestCasesPage() {
           )}><Button icon={<SettingOutlined />}>Cột</Button></Dropdown>
         </Space>
 
-        {effectiveIds.length > 0 && canEdit && (
+        {effectiveIds.length > 0 && (canEdit || canDelete) && (
           <Space wrap style={{ marginBottom: 8, padding: 8, background: '#ffe0e9', borderRadius: 6, width: '100%' }}>
-            <b>{effectiveIds.length} dòng</b>
+            <b>{fmtNumber(effectiveIds.length)} dòng</b>
             {!allIds && <a onClick={async () => { const r = await listTestCaseIds(projectKey, filters as any); setAllIds(r.ids); }}>Chọn tất cả theo bộ lọc</a>}
             {allIds && <a onClick={() => setAllIds(null)}>Bỏ chọn tất cả</a>}
-            <Select size="small" placeholder="Đổi status" style={{ width: 130 }} value={undefined} onChange={(v) => bulk({ status: v })} options={TEST_CASE_STATUSES.map((s) => ({ value: s, label: STATUS_LABEL[s] }))} />
-            <Select size="small" placeholder="Đổi priority" style={{ width: 130 }} value={undefined} onChange={(v) => bulk({ priority: v })} options={TEST_CASE_PRIORITIES.map((p) => ({ value: p, label: p }))} />
-            <Select size="small" placeholder="Đổi category" style={{ width: 140 }} value={undefined} onChange={(v) => bulk({ categoryId: v })} options={categories.map((c) => ({ value: c.id, label: c.name }))} />
-            <Select size="small" placeholder="Chuyển function" showSearch optionFilterProp="label" style={{ width: 180 }} value={undefined} onChange={(v) => bulk({ functionId: v })} options={fnOptions.map((f: any) => ({ value: f.id, label: `${f.code} · ${f.name}` }))} />
-            {canDelete && <Popconfirm title={`Xóa ${effectiveIds.length} test case?`} okButtonProps={{ danger: true }} onConfirm={() => bulk({ deleted: true })}><Button size="small" danger>Xóa</Button></Popconfirm>}
+            <Select disabled={!canEdit} size="small" placeholder="Đổi status" style={{ width: 130 }} value={undefined} onChange={(v) => bulk({ status: v })} options={TEST_CASE_STATUSES.map((s) => ({ value: s, label: STATUS_LABEL[s] }))} />
+            <Select disabled={!canEdit} size="small" placeholder="Đổi priority" style={{ width: 130 }} value={undefined} onChange={(v) => bulk({ priority: v })} options={TEST_CASE_PRIORITIES.map((p) => ({ value: p, label: p }))} />
+            <Select disabled={!canEdit} size="small" placeholder="Đổi category" style={{ width: 140 }} value={undefined} onChange={(v) => bulk({ categoryId: v })} options={categories.map((c) => ({ value: c.id, label: c.name }))} />
+            <Select disabled={!canEdit} size="small" placeholder="Chuyển function" showSearch optionFilterProp="label" style={{ width: 180 }} value={undefined} onChange={(v) => bulk({ functionId: v })} options={fnOptions.map((f: any) => ({ value: f.id, label: `${f.code} · ${f.name}` }))} />
+            {canDelete && <Popconfirm title={`Xóa ${fmtNumber(effectiveIds.length)} test case?`} okButtonProps={{ danger: true }} onConfirm={() => bulk({ deleted: true })}><Button size="small" danger>Xóa</Button></Popconfirm>}
           </Space>
         )}
 
         {tree.data && !fnOptions.length && !tree.data.epics.length ? <Card><EmptyState title="Chưa có epic/function. Thêm thủ công hoặc import Excel." /></Card> : (
           // rowModelType không đổi được sau khi khởi tạo: Client-Side khi xem một function, Infinite khi xem epic/dự án
           <TestCaseGrid key={functionId ? 'client' : 'infinite'} ref={grid} projectKey={projectKey} filters={filters} categories={categories} canEdit={canEdit} reloadToken={reload} hiddenCols={hidden}
-            onOpen={setOpenId} onSelection={(ids) => { setSelected(ids); setAllIds(null); }} me={me} />
+            onOpen={setOpenId} onSelection={(ids) => { setSelected(ids); setAllIds(null); }} onSaved={refreshCounts} me={me} />
         )}
       </div>
       </Splitter.Panel>
       </Splitter>
 
-      <TestCaseDrawer projectKey={projectKey} id={openId} onClose={() => setOpenId(null)} onSaved={(row) => { if (row) grid.current?.updateRow(row); else refreshAll(); void qc.invalidateQueries({ queryKey: ['tc-summary'] }); }} />
-      <CreateTestCaseModal open={createOpen} projectKey={projectKey} functions={fnOptions} defaultFunctionId={functionId} onClose={() => setCreateOpen(false)} onCreated={(row) => { setCreateOpen(false); refreshAll(); setOpenId(row.id); }} />
-      <RequirementModal kind={reqOpen} projectKey={projectKey} epics={tree.data?.epics ?? []} onClose={() => setReqOpen(null)} onCreated={() => { setReqOpen(null); refreshAll(); }} />
+      <TestCaseDrawer projectKey={projectKey} id={openId} onClose={() => setOpenId(null)} onSaved={(row) => { if (row) grid.current?.updateRow(row); else refreshAll(); refreshCounts(); }} />
+      <CreateTestCaseModal open={createOpen && canCreate} projectKey={projectKey} functions={fnOptions} defaultFunctionId={functionId} onClose={() => setCreateOpen(false)} onCreated={(row) => { setCreateOpen(false); refreshAll(); setOpenId(row.id); }} />
+      <RequirementModal kind={canCreateRequirement ? reqOpen : null} projectKey={projectKey} epics={tree.data?.epics ?? []} onClose={() => setReqOpen(null)} onCreated={() => { setReqOpen(null); refreshAll(); }} />
     </div>
   );
 }
 
 function CreateTestCaseModal({ open, projectKey, functions, defaultFunctionId, onClose, onCreated }: { open: boolean; projectKey: string; functions: any[]; defaultFunctionId?: string; onClose: () => void; onCreated: (row: any) => void }) {
+  const canCreate = usePermission(projectKey, 'testcase.create');
   const [form] = Form.useForm();
   const { message } = App.useApp();
   const { data: categories = [] } = useTestCategories(projectKey);
   return (
     <Modal title="Thêm test case" open={open} onCancel={onClose} onOk={() => form.submit()} okText="Tạo" cancelText="Hủy" destroyOnClose afterOpenChange={(o) => o && form.setFieldsValue({ functionId: defaultFunctionId ? Number(defaultFunctionId) : undefined, priority: 'medium' })}>
       <Form form={form} layout="vertical" onFinish={async (v) => {
+        if (!canCreate) return;
         try { onCreated(await createTestCase(projectKey, { functionId: v.functionId, title: v.title, priority: v.priority, categoryId: v.categoryId })); } catch (e) { message.error(errorMessage(e)); }
       }}>
         <Form.Item name="functionId" label="Function" rules={[{ required: true, message: 'Chọn function' }]}><Select showSearch optionFilterProp="label" options={functions.map((f) => ({ value: f.id, label: `${f.code} · ${f.name}` }))} /></Form.Item>
@@ -200,11 +212,13 @@ function CreateTestCaseModal({ open, projectKey, functions, defaultFunctionId, o
 }
 
 function RequirementModal({ kind, projectKey, epics, onClose, onCreated }: { kind: null | 'epic' | 'function'; projectKey: string; epics: any[]; onClose: () => void; onCreated: () => void }) {
+  const canCreate = usePermission(projectKey, 'requirement.create');
   const [form] = Form.useForm();
   const { message } = App.useApp();
   return (
     <Modal title={kind === 'epic' ? 'Thêm epic' : 'Thêm function'} open={!!kind} onCancel={onClose} onOk={() => form.submit()} okText="Tạo" cancelText="Hủy" destroyOnClose>
       <Form form={form} layout="vertical" onFinish={async (v) => {
+        if (!canCreate || !kind) return;
         try { await createRequirement(projectKey, { kind: kind!, code: v.code, name: v.name, traceRef: v.traceRef, sources: v.sources ? String(v.sources).split('\n').filter(Boolean) : undefined, epicIds: v.epicIds }); onCreated(); } catch (e) { message.error(errorMessage(e)); }
       }}>
         <Form.Item name="code" label={kind === 'epic' ? 'Mã epic (NDS-E-00946)' : 'Mã function (NDS-U-00796)'} rules={[{ required: true }]}><Input autoFocus /></Form.Item>

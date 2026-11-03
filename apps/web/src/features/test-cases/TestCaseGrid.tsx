@@ -1,5 +1,5 @@
 import { AgGridReact } from 'ag-grid-react';
-import { ColDef, GridApi, GridReadyEvent, IDatasource, themeQuartz, CellValueChangedEvent, ValueSetterParams, ICellRendererParams } from 'ag-grid-community';
+import { ColDef, GridApi, GridReadyEvent, IDatasource, themeQuartz, CellValueChangedEvent, ValueSetterParams, ValueFormatterParams, ICellRendererParams } from 'ag-grid-community';
 import { App } from 'antd';
 import { Link } from 'react-router-dom';
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef } from 'react';
@@ -8,6 +8,7 @@ import { getTestCase, listTestCaseIds, listTestCases, updateTestCase } from '../
 import { errorCode, errorMessage } from '../../api/http';
 import type { TestCaseRow } from '../../api/models';
 import { fmtDateTime } from '../../lib/date';
+import { fmtNumber } from '../../lib/number';
 import { PRIORITY_LABEL, STATUS_HEX, STATUS_LABEL } from './labels';
 
 export interface GridFilters { functionId?: string; epicId?: string; q?: string; status?: string[]; categoryId?: string[]; priority?: string[] }
@@ -31,7 +32,7 @@ const BugCell = (p: ICellRendererParams<TestCaseRow>) => {
   return (
     <span>
       {bugs.slice(0, 2).map((b, i) => <span key={b.id}>{i > 0 && ', '}<Link to={`/browse/${b.key}`} onClick={(e) => e.stopPropagation()}>{b.key}</Link></span>)}
-      {bugs.length > 2 && <span className="muted"> +{bugs.length - 2}</span>}
+      {bugs.length > 2 && <span className="muted"> +{fmtNumber(bugs.length - 2)}</span>}
     </span>
   );
 };
@@ -48,6 +49,7 @@ interface Props {
   onOpen: (id: number) => void;
   onSelection: (ids: number[]) => void;
   onCount?: (n: number | null) => void;
+  onSaved?: () => void;
   me?: { id: number; displayName: string } | null;
 }
 
@@ -57,7 +59,7 @@ interface Props {
  * - Xem cả epic/dự án: Infinite Row Model, khối 200 dòng, lọc/sắp xếp ở server.
  */
 export const TestCaseGrid = forwardRef<GridHandle, Props>(function TestCaseGrid(
-  { projectKey, filters, categories, canEdit, reloadToken, hiddenCols, onOpen, onSelection, onCount, me }, ref,
+  { projectKey, filters, categories, canEdit, reloadToken, hiddenCols, onOpen, onSelection, onCount, onSaved, me }, ref,
 ) {
   const apiRef = useRef<GridApi | null>(null);
   const { message } = App.useApp();
@@ -76,7 +78,7 @@ export const TestCaseGrid = forwardRef<GridHandle, Props>(function TestCaseGrid(
 
   const columnDefs = useMemo<ColDef<TestCaseRow>[]>(() => [
     { colId: 'stt', headerName: 'STT', pinned: 'left', width: 80, sortable: false, editable: false,
-      valueGetter: (p: any) => p.node?.rowIndex == null ? '' : p.node.rowIndex + 1 },
+      valueGetter: (p: any) => p.node?.rowIndex == null ? '' : p.node.rowIndex + 1, valueFormatter: (p: ValueFormatterParams) => typeof p.value === 'number' ? fmtNumber(p.value) : '' },
     { colId: 'code', field: 'code', headerName: 'Checklist ID', pinned: 'left', width: 200, cellStyle: { fontWeight: 700 }, sortable: true,
       cellRenderer: (p: ICellRendererParams) => <a onClick={() => onOpen(p.data.id)}>{p.value}</a> },
     { colId: 'priority', field: 'priority', headerName: 'Priority', width: 120, sortable: true, editable: canEdit, cellRenderer: PriorityCell, cellEditor: 'agSelectCellEditor', cellEditorParams: { values: [...TEST_CASE_PRIORITIES] } },
@@ -84,7 +86,7 @@ export const TestCaseGrid = forwardRef<GridHandle, Props>(function TestCaseGrid(
       valueSetter: (p: ValueSetterParams<TestCaseRow>) => { const c = categories.find((x) => x.name === p.newValue); p.data.categoryName = c?.name ?? null; p.data.categoryId = c?.id ?? null; return true; } },
     { colId: 'title', field: 'title', headerName: 'Checklist Item', flex: 1, minWidth: 280, editable: canEdit, tooltipField: 'title' },
     { colId: 'preconditions', field: 'preconditions', headerName: 'Pre-conditions', width: 220, tooltipField: 'preconditions' },
-    { colId: 'stepCount', field: 'stepCount', headerName: 'Số bước', width: 90, type: 'rightAligned' },
+    { colId: 'stepCount', field: 'stepCount', headerName: 'Số bước', width: 90, type: 'rightAligned', valueFormatter: (p: ValueFormatterParams) => fmtNumber(p.value) },
     { colId: 'status', field: 'status', headerName: 'Status', width: 130, sortable: true, editable: canEdit, cellRenderer: StatusCell, cellEditor: 'agSelectCellEditor', cellEditorParams: { values: [...TEST_CASE_STATUSES] } },
     { colId: 'bugs', headerName: 'Link Bug', width: 170, cellRenderer: BugCell },
     { colId: 'notes', field: 'notes', headerName: 'Notes', width: 220, editable: canEdit, tooltipField: 'notes' },
@@ -178,6 +180,7 @@ export const TestCaseGrid = forwardRef<GridHandle, Props>(function TestCaseGrid(
   }, []);
 
   const onCellValueChanged = async (e: CellValueChangedEvent<TestCaseRow>) => {
+    if (!canEdit) return;
     const row = e.data;
     const colId = e.column.getColId();
     const body: Record<string, unknown> = { version: row.version };
@@ -190,6 +193,7 @@ export const TestCaseGrid = forwardRef<GridHandle, Props>(function TestCaseGrid(
     try {
       const res = await updateTestCase(String(row.id), body as any);
       e.node.setData({ ...e.node.data!, version: res.version, updatedAt: res.updatedAt, updatedBy: me ? { id: me.id, displayName: me.displayName } : e.node.data!.updatedBy });
+      onSaved?.();
     } catch (err) {
       if (errorCode(err) === 'VERSION_CONFLICT') {
         const who = (err as any).response?.data?.details?.updatedBy?.displayName;
@@ -208,6 +212,8 @@ export const TestCaseGrid = forwardRef<GridHandle, Props>(function TestCaseGrid(
         defaultColDef={{ resizable: true, suppressMovable: false }}
         rowModelType={clientSide ? 'clientSide' : 'infinite'}
         pagination
+        paginationNumberFormatter={(params) => fmtNumber(params.value)}
+        localeText={{ thousandSeparator: '.', decimalSeparator: ',' }}
         paginationPageSize={10}
         paginationPageSizeSelector={[10, 20, 50, 100]}
         cacheBlockSize={200}
@@ -223,7 +229,7 @@ export const TestCaseGrid = forwardRef<GridHandle, Props>(function TestCaseGrid(
         onSelectionChanged={(e) => onSelection(e.api.getSelectedRows().map((r) => r.id))}
         onModelUpdated={(e) => e.api.refreshCells({ columns: ['stt'], force: true })}
         onGridReady={(e: GridReadyEvent) => { apiRef.current = e.api; void reload(); }}
-        onCellValueChanged={onCellValueChanged}
+        onCellValueChanged={canEdit ? onCellValueChanged : undefined}
         onCellDoubleClicked={(e) => { if (['preconditions', 'stepCount', 'bugs'].includes(e.column.getColId()) && e.data) onOpen(e.data.id); }}
         isExternalFilterPresent={isExternalFilterPresent}
         doesExternalFilterPass={doesExternalFilterPass}

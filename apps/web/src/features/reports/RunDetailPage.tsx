@@ -1,3 +1,4 @@
+import { fmtNumber } from '../../lib/number';
 import { Alert, Button, Card, Descriptions, Drawer, Input, Select, Space, Statistic, Tag, Typography, App } from 'antd';
 import { ListTable } from '../../components/ListTable';
 import { useCursorPagination } from '../../lib/useCursorPagination';
@@ -9,7 +10,7 @@ import { errorMessage } from '../../api/http';
 import { AttachmentList } from '../../components/AttachmentList';
 import { QueryBoundary } from '../../components/EmptyState';
 import { fmtDateTime } from '../../lib/date';
-import { useCan } from '../auth/authStore';
+import { usePermission } from '../auth/authStore';
 import { RatioBar, RUN_STATUS_COLOR } from './ReportsPage';
 
 const RESULT_COLOR: Record<string, string> = { passed: 'success', failed: 'error', timedOut: 'error', interrupted: 'error', skipped: 'default', flaky: 'warning' };
@@ -33,7 +34,7 @@ export function RunDetailPage() {
             {r.processingError && <Alert type="error" showIcon message={`Xử lý lỗi: ${r.processingError}`} style={{ marginBottom: 12 }} />}
             <Space size={16} wrap style={{ marginBottom: 16 }}>
               {[['Tổng', r.total], ['Passed', r.passed], ['Failed', r.failed], ['Flaky', r.flaky], ['Skipped', r.skipped], ['Bug mới', r.bugsCreated], ['Bug cập nhật', r.bugsUpdated]].map(([t, v]) => (
-                <Card key={t as string} size="small" style={{ minWidth: 100 }}><Statistic title={t as string} value={v as number} /></Card>
+                <Card key={t as string} size="small" style={{ minWidth: 100 }}><Statistic groupSeparator="." decimalSeparator="," title={t as string} value={v as number} /></Card>
               ))}
               <RatioBar r={r} />
             </Space>
@@ -63,7 +64,7 @@ export function RunDetailPage() {
             { title: 'File', width: 260, ellipsis: true, render: (_, rec: any) => `${rec.file}${rec.line ? `:${rec.line}` : ''}` },
             { title: 'Browser', dataIndex: 'browser', width: 90 },
             { title: 'Trạng thái', dataIndex: 'status', width: 110, render: (s) => <Tag color={RESULT_COLOR[s]}>{s}</Tag> },
-            { title: 'Thời lượng', dataIndex: 'durationMs', width: 90, render: (d) => (d ? `${(d / 1000).toFixed(1)}s` : '—') },
+            { title: 'Thời lượng', dataIndex: 'durationMs', width: 90, render: (d) => (d != null ? `${fmtNumber(d / 1000, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}s` : '—') },
             { title: 'Retry', dataIndex: 'retries', width: 60 },
             { title: 'Bug', width: 200, render: (_, rec: any) => rec.issue ? <Space><Link to={`/browse/${rec.issue.key}`} onClick={(e) => e.stopPropagation()}>{rec.issue.key}</Link><Tag color={rec.issueAction === 'created' ? 'purple' : 'blue'}>{rec.issueAction}</Tag></Space> : rec.issueAction === 'skipped_flaky' ? <Tag>skipped flaky</Tag> : null },
           ]} />
@@ -75,7 +76,8 @@ export function RunDetailPage() {
 
 function ResultDrawer({ id, onClose }: { id: number | null; onClose: () => void }) {
   const { data, refetch } = useQuery<any>({ queryKey: ['run-result', id], queryFn: () => getAutomationResult(String(id)), enabled: !!id });
-  const canCreate = useCan(data?.projectKey, 'developer');
+  const canCreate = usePermission(data?.projectKey, 'report.issue.create');
+  const canViewAttachments = usePermission(data?.projectKey, 'attachment.view');
   const qc = useQueryClient();
   const { message } = App.useApp();
   return (
@@ -85,15 +87,15 @@ function ResultDrawer({ id, onClose }: { id: number | null; onClose: () => void 
           <Descriptions size="small" column={2}>
             <Descriptions.Item label="File">{data.file}{data.line ? `:${data.line}` : ''}</Descriptions.Item>
             <Descriptions.Item label="Browser">{data.browser ?? '—'}</Descriptions.Item>
-            <Descriptions.Item label="Trạng thái"><Tag color={RESULT_COLOR[data.status]}>{data.status}</Tag> retry {data.retries}</Descriptions.Item>
+            <Descriptions.Item label="Trạng thái"><Tag color={RESULT_COLOR[data.status]}>{data.status}</Tag> retry {fmtNumber(data.retries)}</Descriptions.Item>
             <Descriptions.Item label="Tag">{data.tags.map((t: string) => <Tag key={t}>{t}</Tag>)}</Descriptions.Item>
           </Descriptions>
           {data.errorMessage && <div><b>Lỗi</b><pre style={{ background: '#fff2f0', padding: 8, whiteSpace: 'pre-wrap' }}>{data.errorMessage}</pre></div>}
           {data.errorSnippet && <div><b>Đoạn code lỗi</b><pre style={{ background: '#f6f8fa', padding: 8, overflow: 'auto' }}>{data.errorSnippet}</pre></div>}
           {data.errorStack && <details><summary>Stack trace</summary><pre style={{ background: '#f6f8fa', padding: 8, overflow: 'auto' }}>{data.errorStack}</pre></details>}
-          <div><b>Đính kèm</b><AttachmentList items={data.attachments} readOnly /></div>
+          <div><b>Đính kèm</b>{canViewAttachments && <AttachmentList items={data.attachments} readOnly />}</div>
           {data.issue ? <div>Bug liên quan: <Link to={`/browse/${data.issue.key}`}>{data.issue.key}</Link> {data.issue.title}</div> : canCreate && ['failed', 'timedOut', 'interrupted', 'flaky'].includes(data.status) && (
-            <Button type="primary" danger onClick={async () => { try { const r = await createIssueFromResult(String(id)); message.success(`Đã tạo ${r.key}`); await refetch(); void qc.invalidateQueries(); } catch (e) { message.error(errorMessage(e)); } }}>Tạo bug thủ công</Button>
+            <Button type="primary" danger onClick={async () => { if (!canCreate) return; try { const r = await createIssueFromResult(String(id)); message.success(`Đã tạo ${r.key}`); await refetch(); void qc.invalidateQueries(); } catch (e) { message.error(errorMessage(e)); } }}>Tạo bug thủ công</Button>
           )}
         </Space>
       )}

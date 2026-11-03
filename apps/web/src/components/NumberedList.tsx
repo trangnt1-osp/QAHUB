@@ -2,6 +2,7 @@ import { List } from 'antd';
 import type { ListProps } from 'antd/es/list';
 import { useState, type ReactNode } from 'react';
 import { LIST_PAGE_SIZES } from './ListTable';
+import { fmtNumber } from '../lib/number';
 
 export function NumberedList<T>({ dataSource = [], renderItem, resetKey = '', ...props }: Omit<ListProps<T>, 'pagination' | 'renderItem'> & {
   resetKey?: string; renderItem: (item: T, index: number) => ReactNode;
@@ -11,7 +12,8 @@ export function NumberedList<T>({ dataSource = [], renderItem, resetKey = '', ..
   if (state.key !== resetKey || state.current !== current) setState({ ...state, key: resetKey, current });
   return <List<T> {...props} dataSource={dataSource} renderItem={(item, index) => renderItem(item, (current - 1) * state.pageSize + index)}
     pagination={{ current, pageSize: state.pageSize, showSizeChanger: true, pageSizeOptions: LIST_PAGE_SIZES,
-      showTotal: (total, range) => `${range[0]}–${range[1]} / ${total}`,
+      showTotal: (total, range) => `${fmtNumber(range[0])}–${fmtNumber(range[1])} / ${fmtNumber(total)}`,
+      itemRender: (page, type, original) => type === 'page' ? fmtNumber(page) : original,
       onChange: (page, pageSize) => setState({ key: resetKey, current: pageSize !== state.pageSize ? 1 : page, pageSize }),
     }} />;
 }

@@ -41,14 +41,14 @@ export class UsersService {
         memberships: {
           orderBy: [{ joinedAt: 'desc' }, { id: 'desc' }],
           select: {
-            id: true, role: true, joinedAt: true, leftAt: true,
+            id: true, role: true, roleId: true, roleDefinition: { select: { name: true } }, joinedAt: true, leftAt: true,
             project: { select: { id: true, key: true, name: true, deletedAt: true } },
           },
         },
       },
     });
     if (!user) throw notFound(ERROR_CODES.USER_NOT_FOUND, 'Không tìm thấy người dùng');
-    return { user: publicUser(user), projects: user.memberships };
+    return { user: publicUser(user), projects: user.memberships.map(({ roleDefinition, ...membership }) => ({ ...membership, roleName: roleDefinition?.name ?? membership.role })) };
   }
 
   async update(id: bigint, dto: UpdateUserDto, actorId: bigint) {

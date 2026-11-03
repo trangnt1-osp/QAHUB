@@ -7,9 +7,12 @@ import { UserAvatar } from '../../components/UserAvatar';
 import { fmtDate } from '../../lib/date';
 import { ProjectMembers } from './ProjectMembers';
 import { ProjectPeriods } from './ProjectPeriods';
+import { usePermission } from '../auth/authStore';
 
 export default function ProjectInfoPage() {
   const { projectKey = '' } = useParams();
+  const viewPeriods = usePermission(projectKey, 'period.view');
+  const viewMembers = usePermission(projectKey, 'project.members.view');
   const { data: project, isLoading, error, refetch } = useQuery({ queryKey: ['project', projectKey], queryFn: () => getProject(projectKey) });
   return <div className="page">
     <QueryBoundary isLoading={isLoading} error={error} refetch={refetch}>
@@ -24,8 +27,8 @@ export default function ProjectInfoPage() {
             { key: 'description', label: 'Mô tả', children: project.description || '—', span: 2 },
           ]} />
         </Card>
-        <ProjectPeriods projectKey={projectKey} trackingMode={project.trackingMode} />
-        <ProjectMembers projectKey={projectKey} canManage={project.myRole === 'admin'} />
+        {viewPeriods && <ProjectPeriods projectKey={projectKey} trackingMode={project.trackingMode} />}
+        {viewMembers && <ProjectMembers projectKey={projectKey} />}
       </Space>}
     </QueryBoundary>
   </div>;

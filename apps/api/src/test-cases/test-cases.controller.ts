@@ -47,8 +47,8 @@ export class TestCasesController {
   }
 
   @ProjectRole('tester', 'requirement') @Delete('requirements/:id') @HttpCode(204)
-  deleteRequirement(@Param('id') id: string, @CurrentUser() u: AuthUser) {
-    return this.reqs.remove(parseId(id, ERROR_CODES.REQUIREMENT_NOT_FOUND), u.id);
+  deleteRequirement(@Param('id') id: string, @CurrentUser() u: AuthUser, @CurrentProject() p: ProjectContext) {
+    return this.reqs.remove(parseId(id, ERROR_CODES.REQUIREMENT_NOT_FOUND), u.id, p.permissions);
   }
 
   // ----- Category -----

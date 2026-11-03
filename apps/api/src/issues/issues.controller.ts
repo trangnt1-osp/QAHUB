@@ -41,7 +41,7 @@ export class IssuesController {
 
   @ProjectRole('developer') @Post('issues/:issueKey/transitions') @HttpCode(200)
   transitionIssue(@Param('issueKey') key: string, @Body() dto: TransitionDto, @CurrentUser() u: AuthUser, @CurrentProject() p: ProjectContext) {
-    return this.issues.transition(key, dto, u, p.role);
+    return this.issues.transition(key, dto, { ...u, permissions: p.permissions }, p.role);
   }
 
   @ProjectRole('tester') @Post('issues/:issueKey/triage') @HttpCode(200)
@@ -56,7 +56,7 @@ export class IssuesController {
 
   @ProjectRole('developer') @Delete('issues/:issueKey') @HttpCode(204)
   deleteIssue(@Param('issueKey') key: string, @CurrentUser() u: AuthUser, @CurrentProject() p: ProjectContext) {
-    return this.issues.remove(key, u, p.role);
+    return this.issues.remove(key, { ...u, permissions: p.permissions }, p.role);
   }
 
   @ProjectRole('viewer') @Get('issues/:issueKey/comments')

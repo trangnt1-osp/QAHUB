@@ -1,3 +1,4 @@
+import { fmtNumber } from '../../lib/number';
 import { DeleteOutlined, HolderOutlined, PlusOutlined } from '@ant-design/icons';
 import { DndContext, DragEndEvent, PointerSensor, closestCenter, useSensor, useSensors } from '@dnd-kit/core';
 import { SortableContext, arrayMove, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
@@ -11,7 +12,8 @@ import { useParams } from 'react-router-dom';
 import { STATUS_CATEGORIES, StatusCategory } from '@ospm/shared';
 import { applyWorkflowTemplate, saveWorkflow } from '../../api/generated/api';
 import { errorCode, errorMessage } from '../../api/http';
-import { useWorkflow, useWorkflowTemplates } from '../../api/hooks';
+import { useWorkflowConfiguration, useWorkflowTemplates } from '../../api/hooks';
+import { usePermission } from '../auth/authStore';
 import { QueryBoundary } from '../../components/EmptyState';
 
 interface Row { ref: string; id?: number; name: string; category: StatusCategory; color: string; showOnBoard: boolean; issueCount: number }
@@ -27,20 +29,20 @@ interface State {
 const CATEGORY_LABEL: Record<string, string> = { triage: 'triage (chờ duyệt)', todo: 'todo', in_progress: 'in_progress', done: 'done' };
 let tmp = 0;
 
-function SortableRow({ row, serial, onChange, onArchive }: { row: Row; serial: number; onChange: (r: Row) => void; onArchive: () => void }) {
-  const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: row.ref });
+function SortableRow({ row, serial, onChange, onArchive, disabled }: { disabled: boolean; row: Row; serial: number; onChange: (r: Row) => void; onArchive: () => void }) {
+  const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: row.ref, disabled });
   const triage = row.category === 'triage';
   return (
     <div ref={setNodeRef} style={{ transform: CSS.Transform.toString(transform), transition, display: 'grid', width: '100%', gridTemplateColumns: '44px 24px 1fr 190px 48px 150px 40px', gap: 8, alignItems: 'center', padding: '6px 0', background: '#fff' }}>
-      <span aria-label="STT" className="muted">{serial}</span>
+      <span aria-label="STT" className="muted">{fmtNumber(serial)}</span>
       <span {...attributes} {...listeners} style={{ cursor: 'grab', color: '#bfbfbf' }}><HolderOutlined /></span>
-      <Input value={row.name} onChange={(e) => onChange({ ...row, name: e.target.value })} />
-      <Select value={row.category} onChange={(c) => onChange({ ...row, category: c, showOnBoard: c === 'triage' ? false : row.showOnBoard })} options={STATUS_CATEGORIES.map((c) => ({ value: c, label: CATEGORY_LABEL[c] }))} />
-      <ColorPicker value={row.color} onChange={(c) => onChange({ ...row, color: c.toHexString() })} />
+      <Input disabled={disabled} value={row.name} onChange={(e) => onChange({ ...row, name: e.target.value })} />
+      <Select disabled={disabled} value={row.category} onChange={(c) => onChange({ ...row, category: c, showOnBoard: c === 'triage' ? false : row.showOnBoard })} options={STATUS_CATEGORIES.map((c) => ({ value: c, label: CATEGORY_LABEL[c] }))} />
+      <ColorPicker disabled={disabled} value={row.color} onChange={(c) => onChange({ ...row, color: c.toHexString() })} />
       <Tooltip title={triage ? 'Trạng thái triage không bao giờ hiển thị trên board' : undefined}>
-        <span><Switch size="small" checked={!triage && row.showOnBoard} disabled={triage} onChange={(v) => onChange({ ...row, showOnBoard: v })} /> <span className="muted">Hiện trên board</span></span>
+        <span><Switch size="small" checked={!triage && row.showOnBoard} disabled={disabled || triage} onChange={(v) => onChange({ ...row, showOnBoard: v })} /> <span className="muted">Hiện trên board</span></span>
       </Tooltip>
-      <Tooltip title={row.issueCount ? `Đang có ${row.issueCount} item — sẽ phải chọn trạng thái thay thế` : 'Lưu trữ'}><Button type="text" danger icon={<DeleteOutlined />} onClick={onArchive} /></Tooltip>
+      <Tooltip title={row.issueCount ? `Đang có ${fmtNumber(row.issueCount)} item — sẽ phải chọn trạng thái thay thế` : 'Lưu trữ'}><Button disabled={disabled} type="text" danger icon={<DeleteOutlined />} onClick={onArchive} /></Tooltip>
     </div>
   );
 }
@@ -48,7 +50,8 @@ function SortableRow({ row, serial, onChange, onArchive }: { row: Row; serial: n
 /** Cấu hình workflow theo dự án: trạng thái, ma trận chuyển, 4 ô trạng thái đặc biệt, xem trước sơ đồ, áp dụng template. */
 export function WorkflowSettings() {
   const { projectKey = '' } = useParams();
-  const { data: wf, isLoading, error, refetch } = useWorkflow(projectKey);
+  const canEdit = usePermission(projectKey, 'settings.workflow.edit');
+  const { data: wf, isLoading, error, refetch } = useWorkflowConfiguration(projectKey);
   const { data: templates = [] } = useWorkflowTemplates();
   const qc = useQueryClient();
   const { message, modal } = App.useApp();
@@ -72,7 +75,7 @@ export function WorkflowSettings() {
   if (error) return <QueryBoundary isLoading={false} error={error} refetch={refetch}><div /></QueryBoundary>;
   if (isLoading || !st || !wf) return <QueryBoundary isLoading><div /></QueryBoundary>;
 
-  const patch = (p: Partial<State>) => setSt({ ...st, ...p });
+  const patch = (p: Partial<State>) => { if (canEdit && !saving) setSt({ ...st, ...p }); };
   const originalActive = wf.statuses.filter((s) => !s.isArchived);
 
   const buildBody = (map?: Record<string, string>) => ({
@@ -84,6 +87,7 @@ export function WorkflowSettings() {
   });
 
   const doSave = async (map?: Record<string, string>) => {
+    if (!canEdit || saving) return;
     setSaving(true);
     try {
       await saveWorkflow(projectKey, buildBody(map) as any);
@@ -96,6 +100,7 @@ export function WorkflowSettings() {
   };
 
   const save = async () => {
+    if (!canEdit || saving) return;
     if (st.rows.some((r) => !r.name.trim())) return message.error('Mọi trạng thái cần có tên');
     if (!st.initialManual || !st.initialAuto) return message.error('Chọn trạng thái khởi tạo Manual và Auto');
     const removed = originalActive.filter((o) => !st.rows.some((r) => r.id === o.id));
@@ -115,43 +120,43 @@ export function WorkflowSettings() {
   };
 
   const applyTemplate = () => {
-    if (!tplId) return;
+    if (!canEdit || saving || !tplId) return;
     modal.confirm({
       title: 'Áp dụng template?', content: 'Toàn bộ trạng thái và bước chuyển hiện tại sẽ được thay bằng template. Item đang có sẽ được chuyển sang trạng thái cùng nhóm.',
       okText: 'Áp dụng', cancelText: 'Hủy',
-      onOk: async () => { try { await applyWorkflowTemplate(projectKey, { templateId: tplId }); message.success('Đã áp dụng template'); await qc.invalidateQueries(); } catch (e) { message.error(errorMessage(e)); } },
+      onOk: async () => { if (!canEdit) return; try { await applyWorkflowTemplate(projectKey, { templateId: tplId }); message.success('Đã áp dụng template'); await qc.invalidateQueries(); } catch (e) { message.error(errorMessage(e)); } },
     });
   };
 
   return (
     <Space direction="vertical" size="large" style={{ width: '100%' }}>
-      <Card title="Trạng thái" extra={<Space>
+      <Card title="Trạng thái" extra={canEdit && <Space>
         <Select placeholder="Chọn template" style={{ width: 180 }} value={tplId} onChange={setTplId} options={templates.map((t) => ({ value: t.id, label: t.name }))} />
         <Button onClick={applyTemplate} disabled={!tplId}>Áp dụng template</Button>
       </Space>}>
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={(e: DragEndEvent) => {
-          if (!e.over || e.active.id === e.over.id) return;
+          if (!canEdit || saving || !e.over || e.active.id === e.over.id) return;
           patch({ rows: arrayMove(st.rows, st.rows.findIndex((r) => r.ref === e.active.id), st.rows.findIndex((r) => r.ref === e.over!.id)) });
         }}>
           <SortableContext items={st.rows.map((r) => r.ref)} strategy={verticalListSortingStrategy}>
             <NumberedList<Row> split={false} rowKey="ref" dataSource={st.rows} resetKey={projectKey} renderItem={(r, index) => (
-              <List.Item style={{ padding: 0 }}><SortableRow row={r} serial={index + 1} onChange={(n) => patch({ rows: st.rows.map((x) => (x.ref === r.ref ? n : x)) })}
+              <List.Item style={{ padding: 0 }}><SortableRow disabled={!canEdit || saving} row={r} serial={index + 1} onChange={(n) => patch({ rows: st.rows.map((x) => (x.ref === r.ref ? n : x)) })}
                 onArchive={() => patch({ rows: st.rows.filter((x) => x.ref !== r.ref), pairs: new Set([...st.pairs].filter((p) => !p.split('->').includes(r.ref))) })} /></List.Item>
             )} />
           </SortableContext>
         </DndContext>
-        <Button icon={<PlusOutlined />} style={{ marginTop: 8 }} onClick={() => patch({ rows: [...st.rows, { ref: `new-${++tmp}`, name: '', category: 'in_progress', color: '#f51d53', showOnBoard: true, issueCount: 0 }] })}>Thêm trạng thái</Button>
+        <Button disabled={!canEdit || saving} icon={<PlusOutlined />} style={{ marginTop: 8 }} onClick={() => patch({ rows: [...st.rows, { ref: `new-${++tmp}`, name: '', category: 'in_progress', color: '#f51d53', showOnBoard: true, issueCount: 0 }] })}>Thêm trạng thái</Button>
         <Alert type="info" showIcon style={{ marginTop: 12 }} message="Board hiển thị các trạng thái theo đúng thứ tự ở đây, trừ nhóm triage (Pending Review không bao giờ là một cột)." />
       </Card>
 
-      <Card title="Ma trận chuyển trạng thái" extra={<Space><Switch checked={st.allowAny} onChange={(v) => patch({ allowAny: v })} /> Cho phép chuyển tự do</Space>}>
+      <Card title="Ma trận chuyển trạng thái" extra={<Space><Switch disabled={!canEdit || saving} checked={st.allowAny} onChange={(v) => patch({ allowAny: v })} /> Cho phép chuyển tự do</Space>}>
         <ListTable size="small" rowKey="ref" scroll={{ x: true }} resetKey={projectKey} dataSource={[{ ref: '*', name: 'Từ mọi trạng thái' } as any, ...st.rows]}
           columns={[
             { title: 'Từ \\ Đến', dataIndex: 'name', fixed: 'left', width: 170, render: (n, r: any) => (r.ref === '*' ? <i>{n}</i> : n || '(chưa đặt tên)') },
             ...st.rows.map((to) => ({
               title: to.name || '…', width: 110, align: 'center' as const,
               render: (_: unknown, from: any) => from.ref === to.ref ? <span className="muted">—</span> : (
-                <Checkbox disabled={st.allowAny} checked={st.allowAny || st.pairs.has(`${from.ref}->${to.ref}`)} onChange={() => togglePair(from.ref, to.ref)} aria-label={`${from.name} -> ${to.name}`} />
+                <Checkbox disabled={!canEdit || saving || st.allowAny} checked={st.allowAny || st.pairs.has(`${from.ref}->${to.ref}`)} onChange={() => togglePair(from.ref, to.ref)} aria-label={`${from.name} -> ${to.name}`} />
               ),
             })),
           ]} />
@@ -159,24 +164,24 @@ export function WorkflowSettings() {
 
       <Card title="Trạng thái đặc biệt">
         <Space wrap size="large">
-          <label>Khởi tạo Manual<br /><Select style={{ width: 200 }} value={st.initialManual} onChange={(v) => patch({ initialManual: v })} options={statusOptions.filter((o) => st.rows.find((r) => r.ref === o.value)?.category !== 'triage')} /></label>
-          <label>Khởi tạo Auto<br /><Select style={{ width: 200 }} value={st.initialAuto} onChange={(v) => patch({ initialAuto: v })} options={statusOptions} /></label>
-          <label>Đích khi Accept<br /><Select allowClear style={{ width: 200 }} value={st.accept} onChange={(v) => patch({ accept: v })} options={statusOptions} /></label>
-          <label>Đích khi Reject/Duplicate<br /><Select allowClear style={{ width: 200 }} value={st.reject} onChange={(v) => patch({ reject: v })} options={statusOptions} /></label>
+          <label>Khởi tạo Manual<br /><Select disabled={!canEdit || saving} style={{ width: 200 }} value={st.initialManual} onChange={(v) => patch({ initialManual: v })} options={statusOptions.filter((o) => st.rows.find((r) => r.ref === o.value)?.category !== 'triage')} /></label>
+          <label>Khởi tạo Auto<br /><Select disabled={!canEdit || saving} style={{ width: 200 }} value={st.initialAuto} onChange={(v) => patch({ initialAuto: v })} options={statusOptions} /></label>
+          <label>Đích khi Accept<br /><Select disabled={!canEdit || saving} allowClear style={{ width: 200 }} value={st.accept} onChange={(v) => patch({ accept: v })} options={statusOptions} /></label>
+          <label>Đích khi Reject/Duplicate<br /><Select disabled={!canEdit || saving} allowClear style={{ width: 200 }} value={st.reject} onChange={(v) => patch({ reject: v })} options={statusOptions} /></label>
         </Space>
       </Card>
 
       <Card title="Xem trước luồng"><FlowPreview rows={st.rows} pairs={st.pairs} allowAny={st.allowAny} /></Card>
 
-      <div><Button type="primary" size="large" loading={saving} onClick={save}>Lưu workflow</Button></div>
+      {canEdit && <div><Button type="primary" size="large" loading={saving} onClick={save}>Lưu workflow</Button></div>}
 
-      <Modal open={!!replace} title="Chọn trạng thái thay thế" onCancel={() => setReplace(null)} okText="Lưu" cancelText="Hủy" confirmLoading={saving}
-        okButtonProps={{ disabled: !replace || replace.removed.some((r) => !replace.map[r.ref]) }} onOk={() => doSave(replace!.map)}>
+      <Modal open={canEdit && !!replace} title="Chọn trạng thái thay thế" onCancel={() => setReplace(null)} okText="Lưu" cancelText="Hủy" confirmLoading={saving}
+        okButtonProps={{ disabled: !canEdit || !replace || replace.removed.some((r) => !replace.map[r.ref]) }} onOk={() => doSave(replace!.map)}>
         <Typography.Paragraph>Các trạng thái sau đang có item. Chọn trạng thái để chuyển toàn bộ item sang (trong một transaction), trạng thái cũ sẽ được lưu trữ.</Typography.Paragraph>
         {replace?.removed.map((r) => (
           <div key={r.ref} style={{ marginBottom: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
-            <b style={{ minWidth: 140 }}>{r.name}</b> ({r.issueCount} item) →
-            <Select style={{ flex: 1 }} placeholder="Trạng thái thay thế" value={replace.map[r.ref]} onChange={(v) => setReplace({ ...replace, map: { ...replace.map, [r.ref]: v } })} options={statusOptions} />
+            <b style={{ minWidth: 140 }}>{r.name}</b> ({fmtNumber(r.issueCount)} item) →
+            <Select disabled={!canEdit || saving} style={{ flex: 1 }} placeholder="Trạng thái thay thế" value={replace.map[r.ref]} onChange={(v) => setReplace({ ...replace, map: { ...replace.map, [r.ref]: v } })} options={statusOptions} />
           </div>
         ))}
       </Modal>

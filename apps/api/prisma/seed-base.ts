@@ -1,9 +1,10 @@
 import { PrismaClient } from '@prisma/client';
-import { WORKFLOW_TEMPLATES } from '@ospm/shared';
+import { normalizePermissions, WORKFLOW_TEMPLATES } from '@ospm/shared';
 import * as argon2 from 'argon2';
 
 /** Seed tối thiểu: 3 workflow template + system admin. Idempotent. */
 export async function seedBase(prisma: PrismaClient) {
+  await prisma.roleDefinition.upsert({ where: { key: 'qc' }, update: {}, create: { key: 'qc', name: 'QC', description: 'Xem thông tin dự án, Backlog, Active và Test cases.', permissions: normalizePermissions(['dashboard.view', 'project.info.view', 'project.backlog.view', 'project.board.view', 'testcase.view']) } });
   for (const [name, definition] of Object.entries(WORKFLOW_TEMPLATES)) {
     await prisma.workflowTemplate.upsert({ where: { name }, update: { definition: definition as any }, create: { name, definition: definition as any } });
   }

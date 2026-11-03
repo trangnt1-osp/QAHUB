@@ -1,3 +1,4 @@
+import { fmtNumber } from '../../lib/number';
 import {
   DownOutlined, EllipsisOutlined, HolderOutlined, PlusOutlined, RightOutlined,
 } from '@ant-design/icons';
@@ -25,7 +26,7 @@ import { SourceTag } from '../../components/SourceTag';
 import { StatusTag } from '../../components/StatusTag';
 import { UserAvatar } from '../../components/UserAvatar';
 import { fmtDate, fmtEstimate } from '../../lib/date';
-import { useCan } from '../auth/authStore';
+import { useAuth, usePermission } from '../auth/authStore';
 import { useSelectedIssue } from '../issues/useSelectedIssue';
 import { CompleteSprintModal, EditSprintModal, StartSprintModal } from './SprintModals';
 
@@ -48,7 +49,17 @@ export default function BacklogPage() {
   const periodLabel = useProjectTracking(projectKey) === 'phase' ? 'phase' : 'sprint';
   const { data: periods = [] } = useSprints(projectKey);
   const [sp, setSp] = useSearchParams();
-  const canEdit = useCan(projectKey, 'developer');
+  const canEdit = usePermission(projectKey, 'issue.edit');
+  const canCreate = usePermission(projectKey, 'issue.create');
+  const canTransition = usePermission(projectKey, 'issue.transition');
+  const canCreatePeriod = usePermission(projectKey, 'period.create');
+  const canEditPeriod = usePermission(projectKey, 'period.edit');
+  const canDeletePeriod = usePermission(projectKey, 'period.delete');
+  const canStartPeriod = usePermission(projectKey, 'period.start');
+  const canCompletePeriod = usePermission(projectKey, 'period.complete');
+  const canDeleteOwn = usePermission(projectKey, 'issue.delete');
+  const canDeleteAny = usePermission(projectKey, 'issue.delete.any');
+  const user = useAuth((state) => state.user);
   const { data: members = [] } = useMembers(projectKey);
   const { data: wf } = useWorkflow(projectKey);
   const qc = useQueryClient();
@@ -147,7 +158,7 @@ export default function BacklogPage() {
         const start = (page.current - 1) * page.pageSize;
         b.issues.slice(start, start + page.pageSize).forEach((i, index) => out.push({ kind: 'issue', id: String(i.id), issue: i, container: c, ordinal: start + index + 1 }));
         if (b.issues.length) out.push({ kind: 'pagination', id: `p-${c}`, container: c, total: b.issues.length });
-        if (canEdit) out.push({ kind: 'create', id: `c-${c}`, container: c });
+        if (canCreate) out.push({ kind: 'create', id: `c-${c}`, container: c });
       }
     }
     out.push({ kind: 'backlog', id: 'h-backlog' });
@@ -157,10 +168,10 @@ export default function BacklogPage() {
       const start = (page.current - 1) * page.pageSize;
       layout.backlog.slice(start, start + page.pageSize).forEach((i, index) => out.push({ kind: 'issue', id: String(i.id), issue: i, container: BACKLOG, ordinal: start + index + 1 }));
       if (layout.backlogTotal) out.push({ kind: 'pagination', id: 'p-backlog', container: BACKLOG, total: layout.backlogTotal });
-      if (canEdit) out.push({ kind: 'create', id: 'c-backlog', container: BACKLOG });
+      if (canCreate) out.push({ kind: 'create', id: 'c-backlog', container: BACKLOG });
     }
     return out;
-  }, [layout, collapsed, canEdit, pages]);
+  }, [layout, collapsed, canCreate, pages]);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const virtualizer = useVirtualizer({
@@ -222,6 +233,7 @@ export default function BacklogPage() {
   };
 
   const changeStatus = async (issue: IssueRow, toStatusId: number) => {
+    if (!canTransition) return;
     const prev = layout;
     try { await transitionIssue(issue.key, { toStatusId }); await qc.invalidateQueries(); } catch (e) { message.error(errorMessage(e)); setLayout(prev); }
   };
@@ -232,7 +244,7 @@ export default function BacklogPage() {
   const [completeFor, setCompleteFor] = useState<SprintBlock | null>(null);
   const [creatingSprint, setCreatingSprint] = useState(false);
   const addSprint = async () => {
-    if (creatingSprint) return;
+    if (!canCreatePeriod || creatingSprint) return;
     setCreatingSprint(true);
     try {
       await createSprint(projectKey, {});
@@ -244,13 +256,14 @@ export default function BacklogPage() {
   const hasActive = layout?.sprints.some((b) => b.sprint.state === 'active');
   const completionCounts = periods.find((period) => period.id === completeFor?.sprint.id);
   const deletePeriod = async (period: Sprint) => {
+    if (!canDeletePeriod) return;
     try {
       // Check fresh unfiltered counts, including completed and soft-deleted items.
       const current: (Sprint & { issueCount: number }) | undefined = (await listSprints(projectKey)).find((entry: Sprint) => entry.id === period.id);
       if (!current) { message.info('Sprint/phase không còn tồn tại'); await qc.invalidateQueries(); return; }
       const label = current.kind === 'phase' ? 'phase' : 'sprint';
       if (current.issueCount > 0) {
-        modal.warning({ title: `Không thể xóa ${label}`, content: `Còn ${current.issueCount} item liên kết, kể cả item đã hoàn thành hoặc đã xóa. Hãy chuyển các item trước khi xóa.`, okText: 'Đã hiểu' });
+        modal.warning({ title: `Không thể xóa ${label}`, content: `Còn ${fmtNumber(current.issueCount)} item liên kết, kể cả item đã hoàn thành hoặc đã xóa. Hãy chuyển các item trước khi xóa.`, okText: 'Đã hiểu' });
         return;
       }
       await deleteSprint(String(current.id));
@@ -264,9 +277,9 @@ export default function BacklogPage() {
     <div className="page" style={{ paddingBottom: 0 }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
         <div style={{ minWidth: 0 }}><FilterBar projectKey={projectKey} filters={filters} setFilter={setFilter} clear={() => setSp({}, { replace: true })} hasFilters={hasFilters} members={members.map((m) => m.user)} /></div>
-        {canEdit && <Button type="primary" icon={<PlusOutlined />} loading={creatingSprint} onClick={addSprint} style={{ flexShrink: 0 }}>Tạo {periodLabel}</Button>}
+        {canCreatePeriod && <Button type="primary" icon={<PlusOutlined />} loading={creatingSprint} onClick={addSprint} style={{ flexShrink: 0 }}>Tạo {periodLabel}</Button>}
       </div>
-      {selected.size > 0 && canEdit && <BulkBar projectKey={projectKey} keys={[...selected].map((id) => layout!.sprints.flatMap((b) => b.issues).concat(layout!.backlog).find((i) => i.id === id)?.key).filter(Boolean) as string[]} onDone={() => { setSelected(new Set()); void qc.invalidateQueries(); }} statuses={wf?.statuses.filter((s) => !s.isArchived) ?? []} />}
+      {selected.size > 0 && (canEdit || canTransition || canDeleteOwn || canDeleteAny) && <BulkBar canEdit={canEdit} canTransition={canTransition} canDelete={canDeleteAny || (canDeleteOwn && [...selected].every((id) => layout?.sprints.flatMap((b) => b.issues).concat(layout.backlog).find((issue) => issue.id === id)?.reporter?.id === user?.id))} projectKey={projectKey} keys={[...selected].map((id) => layout!.sprints.flatMap((b) => b.issues).concat(layout!.backlog).find((i) => i.id === id)?.key).filter(Boolean) as string[]} onDone={() => { setSelected(new Set()); void qc.invalidateQueries(); }} statuses={wf?.statuses.filter((s) => !s.isArchived) ?? []} />}
       {isLoading || !layout ? <div className="muted" style={{ padding: 32 }}>Đang tải…</div> : hasFilters && !layout.backlogTotal && layout.sprints.every((block) => !block.issues.length) ? <EmptyState title="Không có item phù hợp." /> : (
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={(e: DragStartEvent) => setDragging(rows.find((r) => r.kind === 'issue' && r.id === String(e.active.id)) ? (rows.find((r) => r.id === String(e.active.id)) as any).issue : null)} onDragEnd={onDragEnd} onDragCancel={() => setDragging(null)}>
           <div ref={scrollRef} style={{ height: 'calc(100vh - 290px)', minHeight: 360, overflow: 'auto', background: '#fff', border: '1px solid #f0f0f0', borderRadius: 6 }} data-testid="backlog-scroll">
@@ -277,23 +290,23 @@ export default function BacklogPage() {
                   return (
                     <div key={r.id} style={{ position: 'absolute', top: 0, left: 0, right: 0, transform: `translateY(${v.start}px)`, height: v.size }}>
                       {r.kind === 'sprint' && (
-                        <SprintHeader block={r.block} collapsed={collapsed.has(`s${r.block.sprint.id}`)} hasFilters={hasFilters} canEdit={canEdit} hasActive={!!hasActive}
+                        <SprintHeader block={r.block} collapsed={collapsed.has(`s${r.block.sprint.id}`)} hasFilters={hasFilters} canEdit={canEditPeriod} canStart={canStartPeriod} canComplete={canCompletePeriod} canDelete={canDeletePeriod} hasActive={!!hasActive}
                           toggle={() => setCollapsed((c) => { const n = new Set(c); const k = `s${r.block.sprint.id}`; n.has(k) ? n.delete(k) : n.add(k); return n; })}
                           onStart={() => setStartFor(r.block.sprint)} onComplete={() => setCompleteFor(r.block)} onEdit={() => setEditFor(r.block.sprint)}
                           onDelete={() => void deletePeriod(r.block.sprint)} />
                       )}
                       {r.kind === 'backlog' && (
-                        <BacklogHeader total={layout.backlogTotal} collapsed={collapsed.has(BACKLOG)} canEdit={canEdit}
+                        <BacklogHeader total={layout.backlogTotal} collapsed={collapsed.has(BACKLOG)} canEdit={canCreatePeriod}
                           toggle={() => setCollapsed((c) => { const n = new Set(c); n.has(BACKLOG) ? n.delete(BACKLOG) : n.add(BACKLOG); return n; })}
                           periodLabel={periodLabel} onCreateSprint={addSprint} />
                       )}
                       {r.kind === 'issue' && (
-                        <IssueRowView ordinal={r.ordinal} issue={r.issue} canEdit={canEdit} checked={selected.has(r.issue.id)} projectKey={projectKey}
+                        <IssueRowView ordinal={r.ordinal} issue={r.issue} canEdit={canEdit} canTransition={canTransition} checked={selected.has(r.issue.id)} projectKey={projectKey}
                           onCheck={(c) => setSelected((s) => { const n = new Set(s); c ? n.add(r.issue.id) : n.delete(r.issue.id); return n; })}
                           onOpen={() => select(r.issue.key)} onStatus={(sid) => changeStatus(r.issue, sid)} />
                       )}
                       {r.kind === 'pagination' && <div data-testid={`pagination-${r.container}`} style={{ padding: '10px 12px' }}>
-                        <Pagination size="small" current={pageFor(r.container, r.total).current} pageSize={pageFor(r.container, r.total).pageSize} total={r.total} showSizeChanger={{ getPopupContainer: () => document.body }} pageSizeOptions={[10, 20, 50, 100]} showTotal={(total) => `${total} items`} onChange={(current, pageSize) => { setLoadError(null); setPages((p) => ({ ...p, [r.container]: { current: (p[r.container]?.pageSize ?? 10) !== pageSize ? 1 : current, pageSize } })); }} />
+                        <Pagination size="small" current={pageFor(r.container, r.total).current} pageSize={pageFor(r.container, r.total).pageSize} total={r.total} showSizeChanger={{ getPopupContainer: () => document.body }} pageSizeOptions={[10, 20, 50, 100]} showTotal={(total) => `${fmtNumber(total)} items`} onChange={(current, pageSize) => { setLoadError(null); setPages((p) => ({ ...p, [r.container]: { current: (p[r.container]?.pageSize ?? 10) !== pageSize ? 1 : current, pageSize } })); }} />
                         {r.container === BACKLOG && loadError && <span role="alert">{loadError} <Button size="small" onClick={() => setLoadError(null)}>Retry</Button></span>}
                       </div>}
                       {r.kind === 'empty' && <EmptyDrop container={r.container} />}
@@ -308,9 +321,9 @@ export default function BacklogPage() {
           <DragOverlay>{dragging ? <div style={{ background: '#fff', border: '1px solid #f51d53', padding: '8px 12px', borderRadius: 4 }}><IssueTypeIcon type={dragging.type} /> {dragging.key} {dragging.title}</div> : null}</DragOverlay>
         </DndContext>
       )}
-      <StartSprintModal sprint={startFor} open={!!startFor} onClose={() => setStartFor(null)} />
-      <EditSprintModal sprint={editFor} open={!!editFor} onClose={() => setEditFor(null)} />
-      <CompleteSprintModal sprint={completeFor?.sprint ?? null} open={!!completeFor} onClose={() => setCompleteFor(null)}
+      <StartSprintModal sprint={startFor} open={!!startFor && canStartPeriod} onClose={() => setStartFor(null)} />
+      <EditSprintModal sprint={editFor} open={!!editFor && canEditPeriod} onClose={() => setEditFor(null)} />
+      <CompleteSprintModal sprint={completeFor?.sprint ?? null} open={!!completeFor && canCompletePeriod} onClose={() => setCompleteFor(null)}
         done={completionCounts?.doneCount ?? (completeFor ? completeFor.issues.filter((i) => i.status.category === 'done').length : 0)}
         notDone={completionCounts?.openCount ?? (completeFor ? completeFor.issues.filter((i) => i.status.category !== 'done').length : 0)}
         futureSprints={(layout?.sprints ?? []).filter((b) => b.sprint.state === 'future').map((b) => b.sprint)} />
@@ -343,8 +356,8 @@ function FilterBar({ projectKey, filters, setFilter, clear, hasFilters, members 
 
 const EST_COLORS = { todo: '#dfe1e6', in_progress: '#4c9aff', done: '#36b37e' };
 
-function SprintHeader({ block, collapsed, toggle, hasFilters, canEdit, hasActive, onStart, onComplete, onEdit, onDelete }: {
-  block: SprintBlock; collapsed: boolean; toggle: () => void; hasFilters: boolean; canEdit: boolean; hasActive: boolean;
+function SprintHeader({ block, collapsed, toggle, hasFilters, canEdit, canStart, canComplete, canDelete, hasActive, onStart, onComplete, onEdit, onDelete }: {
+  block: SprintBlock; collapsed: boolean; toggle: () => void; hasFilters: boolean; canEdit: boolean; canStart: boolean; canComplete: boolean; canDelete: boolean; hasActive: boolean;
   onStart: () => void; onComplete: () => void; onEdit: () => void; onDelete: () => void;
 }) {
   const { sprint, totals } = block;
@@ -356,14 +369,14 @@ function SprintHeader({ block, collapsed, toggle, hasFilters, canEdit, hasActive
         <a onClick={toggle}>{collapsed ? <RightOutlined /> : <DownOutlined />}</a>
         <b>{sprint.name}</b>
         {sprint.startDate && <span className="muted">{fmtDate(sprint.startDate)} – {fmtDate(sprint.endDate)}</span>}
-        <span className="muted">({totals.visible} of {totals.total} work items visible)</span>
+        <span className="muted">({fmtNumber(totals.visible)} of {fmtNumber(totals.total)} work items visible)</span>
         {sprint.state === 'active' && <Tag color="blue">Active</Tag>}
         <div style={{ flex: 1 }} />
         {(['todo', 'in_progress', 'done'] as const).map((k) => <Badge key={k} count={fmtEstimate(totals.estimate[k]) || '0'} showZero color={EST_COLORS[k]} style={{ color: k === 'todo' ? '#42526e' : '#fff' }} />)}
-        {canEdit && sprint.state === 'future' && <Button size="small" disabled={label === 'sprint' && hasActive} title={label === 'sprint' && hasActive ? 'Dự án đã có sprint đang chạy' : undefined} onClick={onStart}>{label === 'phase' ? 'Bắt đầu phase' : 'Start sprint'}</Button>}
-        {canEdit && sprint.state === 'active' && <Button size="small" type="primary" onClick={onComplete}>{label === 'phase' ? 'Hoàn thành phase' : 'Complete sprint'}</Button>}
-        {canEdit && (
-          <Dropdown menu={{ items: [{ key: 'edit', label: `Sửa ${label}`, onClick: onEdit }, ...(sprint.state !== 'active' ? [{ key: 'del', danger: true, label: `Xóa ${label}`, onClick: onDelete }] : [])] }}>
+        {canStart && sprint.state === 'future' && <Button size="small" disabled={label === 'sprint' && hasActive} title={label === 'sprint' && hasActive ? 'Dự án đã có sprint đang chạy' : undefined} onClick={onStart}>{label === 'phase' ? 'Bắt đầu phase' : 'Start sprint'}</Button>}
+        {canComplete && sprint.state === 'active' && <Button size="small" type="primary" onClick={onComplete}>{label === 'phase' ? 'Hoàn thành phase' : 'Complete sprint'}</Button>}
+        {(canEdit || (canDelete && sprint.state !== 'active')) && (
+          <Dropdown menu={{ items: [...(canEdit ? [{ key: 'edit', label: `Sửa ${label}`, onClick: onEdit }] : []), ...(canDelete && sprint.state !== 'active' ? [{ key: 'del', danger: true, label: `Xóa ${label}`, onClick: onDelete }] : [])] }}>
             <Button size="small" type="text" aria-label={`Thao tác ${sprint.name}`} icon={<EllipsisOutlined />} />
           </Dropdown>
         )}
@@ -379,7 +392,7 @@ function BacklogHeader({ total, collapsed, toggle, canEdit, onCreateSprint, peri
   return (
     <div ref={setNodeRef} style={{ background: isOver ? '#ffe0e9' : '#f7f8f9', padding: '8px 12px', borderBottom: '1px solid #f0f0f0', height: '100%', boxSizing: 'border-box', display: 'flex', alignItems: 'center', gap: 8 }}>
       <a onClick={toggle}>{collapsed ? <RightOutlined /> : <DownOutlined />}</a>
-      <b>Backlog</b><span className="muted">({total} work items)</span>
+      <b>Backlog</b><span className="muted">({fmtNumber(total)} work items)</span>
       <div style={{ flex: 1 }} />
       {canEdit && <Button size="small" onClick={onCreateSprint}>{periodLabel === 'phase' ? 'Tạo phase' : 'Create sprint'}</Button>}
     </div>
@@ -391,8 +404,8 @@ function EmptyDrop({ container }: { container: string }) {
   return <div ref={setNodeRef} className="muted" style={{ padding: '10px 36px', background: isOver ? '#ffe0e9' : '#fff', border: '1px dashed #d9d9d9', margin: 4 }}>Kéo item vào đây</div>;
 }
 
-const IssueRowView = memo(function IssueRowView({ ordinal, issue, canEdit, checked, onCheck, onOpen, onStatus, projectKey }: {
-  ordinal: number; issue: IssueRow; canEdit: boolean; checked: boolean; onCheck: (c: boolean) => void; onOpen: () => void; onStatus: (id: number) => void; projectKey: string;
+const IssueRowView = memo(function IssueRowView({ ordinal, issue, canEdit, canTransition, checked, onCheck, onOpen, onStatus, projectKey }: {
+  ordinal: number; issue: IssueRow; canEdit: boolean; canTransition: boolean; checked: boolean; onCheck: (c: boolean) => void; onOpen: () => void; onStatus: (id: number) => void; projectKey: string;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: String(issue.id), disabled: !canEdit });
   const { data: wf } = useWorkflow(projectKey);
@@ -406,14 +419,14 @@ const IssueRowView = memo(function IssueRowView({ ordinal, issue, canEdit, check
       style={{ transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.4 : 1, height: '100%', boxSizing: 'border-box' }}>
       {canEdit && <span {...attributes} {...listeners} onClick={(e) => e.stopPropagation()} style={{ cursor: 'grab', color: '#bfbfbf' }}><HolderOutlined /></span>}
       <span onClick={(e) => e.stopPropagation()}><Checkbox checked={checked} onChange={(e) => onCheck(e.target.checked)} /></span>
-      <span className="muted" aria-label="STT" style={{ minWidth: 36, textAlign: 'right' }}>{ordinal}</span>
+      <span className="muted" aria-label="STT" style={{ minWidth: 36, textAlign: 'right' }}>{fmtNumber(ordinal)}</span>
       <IssueTypeIcon type={issue.type} />
       <span className="muted" style={{ width: 84 }}>{issue.key}</span>
       <span className="title">{issue.title}</span>
       {issue.parent && <Tag style={{ margin: 0 }}>{issue.type === 'subtask' ? `Subtask of ${issue.parent.key}` : issue.parent.key}</Tag>}
       {issue.labels.filter((l) => !l.isSystem).slice(0, 2).map((l) => <Tag key={l.id} color={l.color} style={{ margin: 0 }}>{l.name}</Tag>)}
       {issue.source === 'auto' && <SourceTag source="auto" />}
-      <StatusTag status={issue.status} transitions={transitions} onTransition={canEdit ? onStatus : undefined} />
+      <StatusTag status={issue.status} transitions={transitions} onTransition={canTransition ? onStatus : undefined} />
       <span className="muted" style={{ width: 48, textAlign: 'right' }}>{fmtEstimate(issue.estimateMinutes)}</span>
       <PriorityIcon priority={issue.priority} />
       <UserAvatar user={issue.assignee} size={22} />
@@ -422,15 +435,17 @@ const IssueRowView = memo(function IssueRowView({ ordinal, issue, canEdit, check
 });
 
 function QuickCreate({ projectKey, sprintId, onCreated }: { projectKey: string; sprintId?: number; onCreated: () => void }) {
+  const canCreate = usePermission(projectKey, 'issue.create');
   const [active, setActive] = useState(false);
   const [title, setTitle] = useState('');
   const [type, setType] = useState('task');
   const { message } = App.useApp();
   const submit = async () => {
-    if (!title.trim()) return;
+    if (!canCreate || !title.trim()) return;
     try { await createIssue(projectKey, { type: type as any, title: title.trim(), sprintId }); setTitle(''); onCreated(); }
     catch (e) { message.error(errorMessage(e)); }
   };
+  if (!canCreate) return null;
   if (!active) return <div className="issue-row" style={{ height: '100%', boxSizing: 'border-box' }} onClick={() => setActive(true)}><PlusOutlined /> <span className="muted">Create</span></div>;
   return (
     <div className="issue-row" style={{ height: '100%', boxSizing: 'border-box' }}>
@@ -440,25 +455,26 @@ function QuickCreate({ projectKey, sprintId, onCreated }: { projectKey: string; 
   );
 }
 
-function BulkBar({ projectKey, keys, statuses, onDone }: { projectKey: string; keys: string[]; statuses: { id: number; name: string }[]; onDone: () => void }) {
+function BulkBar({ projectKey, keys, statuses, onDone, canEdit, canTransition, canDelete }: { canEdit: boolean; canTransition: boolean; canDelete: boolean; projectKey: string; keys: string[]; statuses: { id: number; name: string }[]; onDone: () => void }) {
   const phase = useProjectTracking(projectKey) === 'phase';
   const { data: members = [] } = useMembers(projectKey);
   const { data: sprints = [] } = useSprints(projectKey);
   const { message } = App.useApp();
   const run = async (set: Record<string, unknown>) => {
-    try { await bulkUpdateIssues(projectKey, { issueKeys: keys, set: set as any }); message.success(`Đã cập nhật ${keys.length} item`); onDone(); }
+    if (set.deleted ? !canDelete : 'statusId' in set ? !canTransition : !canEdit) return;
+    try { await bulkUpdateIssues(projectKey, { issueKeys: keys, set: set as any }); message.success(`Đã cập nhật ${fmtNumber(keys.length)} item`); onDone(); }
     catch (e) { message.error(errorMessage(e)); }
   };
   return (
     <Space wrap style={{ marginBottom: 8, padding: 8, background: '#ffe0e9', borderRadius: 6, width: '100%' }}>
-      <Typography.Text strong>{keys.length} đã chọn</Typography.Text>
-      <Select size="small" placeholder={phase ? 'Chuyển phase' : 'Chuyển sprint'} style={{ width: 150 }} onChange={(v) => run({ sprintId: v === 'backlog' ? null : v })} value={undefined}
+      <Typography.Text strong>{fmtNumber(keys.length)} đã chọn</Typography.Text>
+      <Select disabled={!canEdit} size="small" placeholder={phase ? 'Chuyển phase' : 'Chuyển sprint'} style={{ width: 150 }} onChange={(v) => run({ sprintId: v === 'backlog' ? null : v })} value={undefined}
         options={[{ value: 'backlog', label: 'Backlog' }, ...sprints.map((s) => ({ value: s.id, label: s.name }))]} />
-      <Select size="small" placeholder="Đổi trạng thái" style={{ width: 150 }} onChange={(v) => run({ statusId: v })} value={undefined} options={statuses.map((s) => ({ value: s.id, label: s.name }))} />
-      <Select size="small" placeholder="Gán người" style={{ width: 150 }} showSearch optionFilterProp="label" onChange={(v) => run({ assigneeId: v })} value={undefined} options={members.map((m) => ({ value: m.userId, label: m.user.displayName }))} />
-      <Select size="small" placeholder="Priority" style={{ width: 110 }} onChange={(v) => run({ priority: v })} value={undefined} options={PRIORITIES.map((p) => ({ value: p, label: p }))} />
-      <LabelSelect projectKey={projectKey} value={[]} onChange={(ids) => ids.length && run({ labelIds: ids })} placeholder="Thêm label" style={{ minWidth: 130 }} />
-      <Popconfirm title={`Xóa ${keys.length} item?`} okButtonProps={{ danger: true }} onConfirm={() => run({ deleted: true })}><Button size="small" danger>Xóa</Button></Popconfirm>
+      <Select disabled={!canTransition} size="small" placeholder="Đổi trạng thái" style={{ width: 150 }} onChange={(v) => run({ statusId: v })} value={undefined} options={statuses.map((s) => ({ value: s.id, label: s.name }))} />
+      <Select disabled={!canEdit} size="small" placeholder="Gán người" style={{ width: 150 }} showSearch optionFilterProp="label" onChange={(v) => run({ assigneeId: v })} value={undefined} options={members.map((m) => ({ value: m.userId, label: m.user.displayName }))} />
+      <Select disabled={!canEdit} size="small" placeholder="Priority" style={{ width: 110 }} onChange={(v) => run({ priority: v })} value={undefined} options={PRIORITIES.map((p) => ({ value: p, label: p }))} />
+      {canEdit && <LabelSelect projectKey={projectKey} value={[]} onChange={(ids) => ids.length && run({ labelIds: ids })} placeholder="Thêm label" style={{ minWidth: 130 }} />}
+      {canDelete && <Popconfirm title={`Xóa ${fmtNumber(keys.length)} item?`} okButtonProps={{ danger: true }} onConfirm={() => run({ deleted: true })}><Button size="small" danger>Xóa</Button></Popconfirm>}
     </Space>
   );
 }

@@ -1,3 +1,4 @@
+import { fmtNumber, parseNumber } from '../../lib/number';
 import { DeleteOutlined, LinkOutlined } from '@ant-design/icons';
 import { App, Button, Card, DatePicker, Descriptions, Divider, Empty, InputNumber, List, Popconfirm, Select, Space, Tabs, Tag, Timeline, Typography } from 'antd';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -22,21 +23,34 @@ import { StatusTag } from '../../components/StatusTag';
 import { UserAvatar } from '../../components/UserAvatar';
 import { UserSelect } from '../../components/UserSelect';
 import { fmtDateTime, fromNow } from '../../lib/date';
-import { useAuth, useCan } from '../auth/authStore';
+import { useAuth, usePermission } from '../auth/authStore';
 import { TriageButtons } from './TriageButtons';
 import { useSelectedIssue } from './useSelectedIssue';
 
 const projectKeyOf = (key: string) => key.slice(0, key.lastIndexOf('-'));
 
-export function IssueDetailView({ issueKey, onDeleted }: { issueKey: string; onDeleted?: () => void }) {
+interface IssueDetailViewProps { issueKey: string; onDeleted?: () => void }
+
+export function IssueDetailView(props: IssueDetailViewProps) {
+  const canView = usePermission(projectKeyOf(props.issueKey), 'issue.view');
+  return canView ? <AuthorizedIssueDetailView {...props} /> : null;
+}
+
+function AuthorizedIssueDetailView({ issueKey, onDeleted }: IssueDetailViewProps) {
   const projectKey = projectKeyOf(issueKey);
   const qc = useQueryClient();
   const { message } = App.useApp();
   const { select } = useSelectedIssue();
   const user = useAuth((s) => s.user);
-  const canEdit = useCan(projectKey, 'developer');
-  const canTriage = useCan(projectKey, 'tester');
-  const isAdmin = useCan(projectKey, 'admin');
+  const canEdit = usePermission(projectKey, 'issue.edit');
+  const canTriage = usePermission(projectKey, 'issue.triage');
+  const canDeleteAny = usePermission(projectKey, 'issue.delete.any');
+  const canDeleteOwn = usePermission(projectKey, 'issue.delete');
+  const canTransition = usePermission(projectKey, 'issue.transition');
+  const canComment = usePermission(projectKey, 'issue.comment');
+  const canViewAttachments = usePermission(projectKey, 'attachment.view');
+  const canUpload = usePermission(projectKey, 'attachment.create');
+  const isAdmin = useAuth((state) => state.user?.systemRole === 'admin' || state.projects.some((project) => project.projectKey === projectKey && !project.roleId && project.role === 'admin'));
   const { data: issue, isLoading, error, refetch } = useQuery<IssueDetail>({ queryKey: ['issue', issueKey], queryFn: () => getIssue(issueKey) });
   const { data: sprints = [] } = useSprints(projectKey);
   const phase = useProjectTracking(projectKey) === 'phase';
@@ -49,7 +63,7 @@ export function IssueDetailView({ issueKey, onDeleted }: { issueKey: string; onD
 
   /** Sửa nhanh có cập nhật lạc quan; lỗi thì hoàn tác. 409 -> báo "Item vừa được người khác sửa". */
   const patch = async (body: Record<string, unknown>, optimistic?: Partial<IssueDetail>) => {
-    if (!issue) return;
+    if (!issue || !canEdit) return;
     const prev = issue;
     if (optimistic) qc.setQueryData(['issue', issueKey], { ...issue, ...optimistic });
     try {
@@ -62,6 +76,7 @@ export function IssueDetailView({ issueKey, onDeleted }: { issueKey: string; onD
   };
 
   const transition = async (toStatusId: number) => {
+    if (!canTransition) return;
     setBusy(true);
     try { await transitionIssue(issueKey, { toStatusId }); await refresh(); } catch (e) { message.error(errorMessage(e)); } finally { setBusy(false); }
   };
@@ -84,7 +99,7 @@ export function IssueDetailView({ issueKey, onDeleted }: { issueKey: string; onD
             {issue.autoInfo && (
               <Card size="small" title="Thông tin tự động" style={{ marginBottom: 16, borderColor: '#d3adf7' }}>
                 <Descriptions size="small" column={2}>
-                  <Descriptions.Item label="Số lần xuất hiện">{issue.autoInfo.occurrenceCount}</Descriptions.Item>
+                  <Descriptions.Item label="Số lần xuất hiện">{fmtNumber(issue.autoInfo.occurrenceCount)}</Descriptions.Item>
                   <Descriptions.Item label="Lần đầu">{fmtDateTime(issue.autoInfo.firstSeenAt)}</Descriptions.Item>
                   <Descriptions.Item label="Lần cuối">{fmtDateTime(issue.autoInfo.lastSeenAt)}</Descriptions.Item>
                   <Descriptions.Item label="Lần chạy gần nhất">
@@ -128,11 +143,11 @@ export function IssueDetailView({ issueKey, onDeleted }: { issueKey: string; onD
             )}
 
             <Divider orientation="left" plain>File đính kèm</Divider>
-            <AttachmentList items={issue.attachments} entity="issue" entityId={issue.id} onUploaded={refresh} readOnly={!canEdit} />
+            {canViewAttachments && <AttachmentList items={issue.attachments} entity="issue" entityId={issue.id} onUploaded={refresh} readOnly={!canUpload} />}
 
             <Tabs style={{ marginTop: 16 }} items={[
               { key: 'comments', label: 'Comment', children: (
-                <CommentsTab issueKey={issueKey} userId={user?.id} canEdit={canEdit} isAdmin={isAdmin} comment={comment} setComment={setComment} onChanged={refresh} />
+                <CommentsTab issueKey={issueKey} userId={user?.id} canEdit={canComment} isAdmin={isAdmin} comment={comment} setComment={setComment} onChanged={refresh} />
               ) },
               { key: 'history', label: 'Lịch sử', children: <HistoryTab issueKey={issueKey} /> },
             ]} />
@@ -141,7 +156,7 @@ export function IssueDetailView({ issueKey, onDeleted }: { issueKey: string; onD
           <div>
             <Card size="small">
               <div style={{ marginBottom: 12 }}>
-                <StatusTag status={issue.status} transitions={issue.availableTransitions} onTransition={canEdit ? transition : undefined} loading={busy} />
+                <StatusTag status={issue.status} transitions={issue.availableTransitions} onTransition={canTransition ? transition : undefined} loading={busy} />
                 {issue.status.category === 'triage' && canTriage && <div style={{ marginTop: 8 }}><TriageButtons issueKey={issue.key} projectKey={projectKey} /></div>}
               </div>
               <Descriptions column={1} size="small" colon={false} labelStyle={{ width: 96, color: '#8c8c8c' }}>
@@ -158,10 +173,13 @@ export function IssueDetailView({ issueKey, onDeleted }: { issueKey: string; onD
                 </Descriptions.Item>
                 <Descriptions.Item label="Epic/Cha">{issue.parent ? <a onClick={() => select(issue.parent!.key)}>{issue.parent.key} {issue.parent.title}</a> : '—'}</Descriptions.Item>
                 <Descriptions.Item label="Label">
-                  <LabelSelect projectKey={projectKey} value={issue.labels.map((l) => l.id)} onChange={(ids) => patch({ labelIds: ids })} style={{ width: 190 }} />
+                  {canEdit ? <LabelSelect projectKey={projectKey} value={issue.labels.map((l) => l.id)} onChange={(ids) => patch({ labelIds: ids })} style={{ width: 190 }} /> : issue.labels.map((l) => <Tag key={l.id} color={l.color}>{l.name}</Tag>)}
                 </Descriptions.Item>
                 <Descriptions.Item label="Estimate (phút)">
-                  <InputNumber min={0} disabled={!canEdit} value={issue.estimateMinutes ?? undefined} onBlur={(e) => { const v = e.target.value === '' ? null : Number(e.target.value); if (v !== issue.estimateMinutes) patch({ estimateMinutes: v }); }} />
+                  <InputNumber min={0} disabled={!canEdit} value={issue.estimateMinutes ?? undefined}
+                    formatter={(value, { userTyping, input }) => userTyping ? input : value === undefined || value === null ? '' : fmtNumber(value)}
+                    parser={(text) => parseNumber(text ?? '')}
+                    onBlur={(e) => { const v = e.target.value.trim() === '' ? null : parseNumber(e.target.value); if (v !== null && !Number.isFinite(v)) return; if (v !== issue.estimateMinutes) patch({ estimateMinutes: v }); }} />
                 </Descriptions.Item>
                 <Descriptions.Item label="Due date">
                   <DatePicker disabled={!canEdit} value={issue.dueDate ? dayjs(issue.dueDate) : null} format="DD/MM/YYYY" onChange={(d) => patch({ dueDate: d ? d.format('YYYY-MM-DD') : null })} />
@@ -169,8 +187,8 @@ export function IssueDetailView({ issueKey, onDeleted }: { issueKey: string; onD
                 <Descriptions.Item label="Tạo lúc">{fmtDateTime(issue.createdAt)}</Descriptions.Item>
                 <Descriptions.Item label="Cập nhật">{fmtDateTime(issue.updatedAt)}</Descriptions.Item>
               </Descriptions>
-              {(isAdmin || (canEdit && issue.reporter?.id === user?.id)) && (
-                <Popconfirm title="Xóa item này?" okText="Xóa" cancelText="Hủy" okButtonProps={{ danger: true }} onConfirm={async () => { try { await deleteIssue(issueKey); message.success('Đã xóa'); await refresh(); onDeleted?.(); } catch (e) { message.error(errorMessage(e)); } }}>
+              {(canDeleteAny || (canDeleteOwn && issue.reporter?.id === user?.id)) && (
+                <Popconfirm title="Xóa item này?" okText="Xóa" cancelText="Hủy" okButtonProps={{ danger: true }} onConfirm={async () => { if (!(canDeleteAny || (canDeleteOwn && issue.reporter?.id === user?.id))) return; try { await deleteIssue(issueKey); message.success('Đã xóa'); await refresh(); onDeleted?.(); } catch (e) { message.error(errorMessage(e)); } }}>
                   <Button danger type="text" icon={<DeleteOutlined />} style={{ marginTop: 8 }}>Xóa</Button>
                 </Popconfirm>
               )}
@@ -194,7 +212,7 @@ function CommentsTab({ issueKey, userId, canEdit, isAdmin, comment, setComment, 
         <div style={{ marginBottom: 16 }}>
           <RichTextEditor key={key} onChange={setComment} placeholder="Viết comment…" />
           <Button type="primary" size="small" style={{ marginTop: 8 }} disabled={isEmptyDoc(comment)}
-            onClick={async () => { try { await addComment(issueKey, { body: comment! }); setComment(null); setKey((k) => k + 1); onChanged(); } catch (e) { message.error(errorMessage(e)); } }}>Gửi</Button>
+            onClick={async () => { if (!canEdit) return; try { await addComment(issueKey, { body: comment! }); setComment(null); setKey((k) => k + 1); onChanged(); } catch (e) { message.error(errorMessage(e)); } }}>Gửi</Button>
         </div>
       )}
       {!isLoading && data.length === 0 && <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="Chưa có comment" />}
@@ -203,7 +221,7 @@ function CommentsTab({ issueKey, userId, canEdit, isAdmin, comment, setComment, 
           <UserAvatar user={c.author ?? { id: 0, displayName: 'Hệ thống' }} />
           <div style={{ flex: 1 }}>
             <Space size={8}><b>{c.author?.displayName ?? 'Hệ thống'}</b><span className="muted" title={fmtDateTime(c.createdAt)}>{fromNow(c.createdAt)}</span>
-              {(c.authorId === userId || isAdmin) && <a onClick={async () => { await deleteComment(c.id); onChanged(); }}>Xóa</a>}</Space>
+              {(canEdit && (c.authorId === userId || isAdmin)) && <a onClick={async () => { if (!canEdit) return; await deleteComment(c.id); onChanged(); }}>Xóa</a>}</Space>
             <RichTextEditor value={c.body} editable={false} />
           </div>
         </div>

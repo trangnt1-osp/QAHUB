@@ -21,6 +21,7 @@ import { SummaryModule } from './summary/summary.module';
 import { TestCasesModule } from './test-cases/test-cases.module';
 import { UsersModule } from './users/users.module';
 import { WorkflowsModule } from './workflows/workflows.module';
+import { RolesModule } from './roles/roles.module';
 
 @Module({
   imports: [
@@ -38,6 +39,7 @@ import { WorkflowsModule } from './workflows/workflows.module';
     ActivityModule,
     AuthModule,
     UsersModule,
+    RolesModule,
     WorkflowsModule,
     ProjectsModule,
     IssuesModule,

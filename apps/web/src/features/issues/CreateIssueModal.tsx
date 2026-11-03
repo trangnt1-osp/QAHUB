@@ -13,7 +13,7 @@ import { useState } from 'react';
 /** Nút "+ Tạo" ở header: tạo item tay ở bất kỳ dự án nào mình có quyền developer trở lên. */
 export function CreateIssueModal() {
   const { open, projectKey: preset, hide } = useCreateIssueModal();
-  const { projects, can } = useAuth();
+  const { projects, hasPermission } = useAuth();
   const [form] = Form.useForm();
   const [saving, setSaving] = useState(false);
   const qc = useQueryClient();
@@ -21,11 +21,12 @@ export function CreateIssueModal() {
   const nav = useNavigate();
   const projectKey = Form.useWatch('projectKey', form) ?? preset;
   const { data: members = [] } = useMembers(open ? projectKey : undefined);
-  const options = projects.filter((p) => can(p.projectKey, 'developer'));
+  const options = projects.filter((p) => hasPermission(p.projectKey, 'issue.create'));
   return (
     <Modal title="Tạo item" open={open} onCancel={hide} okText="Tạo" cancelText="Hủy" confirmLoading={saving} destroyOnClose
-      onOk={() => form.submit()} afterOpenChange={(o) => o && form.setFieldsValue({ projectKey: preset ?? options[0]?.projectKey, type: 'task', priority: 'medium' })}>
+      onOk={() => form.submit()} afterOpenChange={(o) => o && form.setFieldsValue({ projectKey: options.find((p) => p.projectKey === preset)?.projectKey ?? options[0]?.projectKey, type: 'task', priority: 'medium' })}>
       <Form form={form} layout="vertical" onFinish={async (v) => {
+        if (!hasPermission(v.projectKey, 'issue.create')) return;
         setSaving(true);
         try {
           const issue = await createIssue(v.projectKey, { type: v.type, title: v.title, priority: v.priority, assigneeId: v.assigneeId });

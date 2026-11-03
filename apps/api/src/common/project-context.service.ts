@@ -1,9 +1,10 @@
 import { Injectable } from '@nestjs/common';
-import { ERROR_CODES, PROJECT_ROLE_RANK, ProjectRole } from '@ospm/shared';
+import { BUILTIN_ROLE_PERMISSIONS, ERROR_CODES, normalizePermissions, Permission, PROJECT_ROLE_RANK, ProjectRole } from '@ospm/shared';
 import { parseId } from './bigint';
 import { forbidden, notFound } from './errors';
 import { PrismaService } from './prisma.service';
 import type { ProjectResolver } from './decorators';
+import { builtinPermissions } from '../roles/builtin-roles';
 
 export const ISSUE_KEY_REGEX = /^([A-Z][A-Z0-9]{1,9})-(\d+)$/;
 
@@ -17,6 +18,22 @@ export function parseIssueKey(issueKey: string): { projectKey: string; number: b
 @Injectable()
 export class ProjectContextService {
   constructor(private readonly prisma: PrismaService) {}
+
+  async accessOf(user: { id: bigint; systemRole: string }, projectId: bigint) {
+    if (user.systemRole === 'admin') return { role: 'admin' as ProjectRole, roleId: null, roleName: 'Admin', permissions: BUILTIN_ROLE_PERMISSIONS.admin };
+    const member = await this.prisma.projectMember.findFirst({ where: { projectId, userId: user.id, leftAt: null }, include: { roleDefinition: true } });
+    if (!member) return null;
+    const role = member.role as ProjectRole;
+    return { role, roleId: member.roleId, roleName: member.roleDefinition?.name ?? role,
+      permissions: member.roleId ? normalizePermissions(member.roleDefinition?.permissions ?? []) : await builtinPermissions(this.prisma, role) };
+  }
+
+  async requirePermission(user: { id: bigint; systemRole: string }, projectId: bigint, permission: Permission) {
+    if (!await this.prisma.project.count({ where: { id: projectId, deletedAt: null } })) throw forbidden('Dự án không còn khả dụng');
+    const access = await this.accessOf(user, projectId);
+    if (!access?.permissions.includes(permission)) throw forbidden('Bạn không có quyền thực hiện thao tác này trong dự án');
+    return access;
+  }
 
   async resolve(params: Record<string, string>, resolver: ProjectResolver): Promise<{ id: bigint; key: string }> {
     let projectId: bigint | null | undefined;
@@ -75,6 +92,8 @@ export class ProjectContextService {
   }
 
   async requireRole(user: { id: bigint; systemRole: string }, projectId: bigint, min: ProjectRole): Promise<ProjectRole> {
+    const access = await this.accessOf(user, projectId);
+    if (access?.roleId) throw forbidden('Cần kiểm tra quyền cụ thể cho vai trò tùy chỉnh');
     const role = await this.roleOf(user, projectId);
     if (!role) throw forbidden('Bạn không phải thành viên của dự án này');
     if (PROJECT_ROLE_RANK[role] < PROJECT_ROLE_RANK[min]) throw forbidden(`Cần vai trò ${min} trở lên trong dự án`);

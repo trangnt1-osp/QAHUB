@@ -11,7 +11,8 @@ import { getTestCase, linkTestCaseBug, unlinkTestCaseBug, updateTestCase } from 
 import { errorCode, errorMessage } from '../../api/http';
 import { useTestCategories } from '../../api/hooks';
 import { fmtDateTime } from '../../lib/date';
-import { useCan } from '../auth/authStore';
+import { fmtNumber } from '../../lib/number';
+import { usePermission } from '../auth/authStore';
 import { STATUS_COLOR, STATUS_LABEL } from './labels';
 
 interface Step { id: string; action: string; expected: string }
@@ -21,7 +22,7 @@ function StepRow({ step, index, onChange, onRemove, disabled }: { step: Step; in
   return (
     <div ref={setNodeRef} style={{ transform: CSS.Transform.toString(transform), transition, display: 'grid', gridTemplateColumns: '24px 28px 1fr 1fr 28px', gap: 8, alignItems: 'start', marginBottom: 8, background: '#fff' }}>
       <span {...attributes} {...listeners} style={{ cursor: disabled ? 'default' : 'grab', color: '#bfbfbf', paddingTop: 6 }}><HolderOutlined /></span>
-      <span style={{ paddingTop: 5 }}>{index + 1}.</span>
+      <span style={{ paddingTop: 5 }}>{fmtNumber(index + 1)}.</span>
       <Input.TextArea autoSize={{ minRows: 1, maxRows: 5 }} placeholder="Bước thực hiện" value={step.action} disabled={disabled} onChange={(e) => onChange({ ...step, action: e.target.value })} />
       <Input.TextArea autoSize={{ minRows: 1, maxRows: 5 }} placeholder="Expected" value={step.expected} disabled={disabled} onChange={(e) => onChange({ ...step, expected: e.target.value })} />
       <Button type="text" danger icon={<DeleteOutlined />} disabled={disabled} onClick={onRemove} />
@@ -30,10 +31,19 @@ function StepRow({ step, index, onChange, onRemove, disabled }: { step: Step; in
 }
 
 /** Drawer chi tiết test case: trình sửa từng cặp Bước – Expected, bug liên kết, lịch sử phiên bản. */
-export function TestCaseDrawer({ projectKey, id, onClose, onSaved }: { projectKey: string; id: number | null; onClose: () => void; onSaved: (row: any) => void }) {
+interface TestCaseDrawerProps { projectKey: string; id: number | null; onClose: () => void; onSaved: (row: any) => void }
+
+export function TestCaseDrawer(props: TestCaseDrawerProps) {
+  const canView = usePermission(props.projectKey, 'testcase.view');
+  return canView ? <AuthorizedTestCaseDrawer {...props} /> : null;
+}
+
+function AuthorizedTestCaseDrawer({ projectKey, id, onClose, onSaved }: TestCaseDrawerProps) {
   const { data, refetch } = useQuery<any>({ queryKey: ['test-case', id], queryFn: () => getTestCase(String(id)), enabled: !!id });
   const { data: categories = [] } = useTestCategories(projectKey);
-  const canEdit = useCan(projectKey, 'developer');
+  const canEdit = usePermission(projectKey, 'testcase.edit');
+  const canLinkBug = usePermission(projectKey, 'testcase.bug.link');
+  const canCreateBug = usePermission(projectKey, 'issue.create');
   const [form] = Form.useForm();
   const [steps, setSteps] = useState<Step[]>([]);
   const [saving, setSaving] = useState(false);
@@ -49,6 +59,7 @@ export function TestCaseDrawer({ projectKey, id, onClose, onSaved }: { projectKe
   }, [data, form]);
 
   const save = async () => {
+    if (!canEdit) return;
     const v = await form.validateFields();
     setSaving(true);
     try {
@@ -75,7 +86,7 @@ export function TestCaseDrawer({ projectKey, id, onClose, onSaved }: { projectKe
           <Form.Item name="preconditions" label="Pre-conditions"><Input.TextArea autoSize={{ minRows: 2, maxRows: 8 }} /></Form.Item>
           <div style={{ fontWeight: 500, marginBottom: 8 }}>Các bước &amp; kết quả mong đợi</div>
           <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={(e: DragEndEvent) => {
-            if (!e.over || e.active.id === e.over.id) return;
+            if (!canEdit || !e.over || e.active.id === e.over.id) return;
             setSteps((s) => arrayMove(s, s.findIndex((x) => x.id === e.active.id), s.findIndex((x) => x.id === e.over!.id)));
           }}>
             <SortableContext items={steps.map((s) => s.id)} strategy={verticalListSortingStrategy}>
@@ -96,18 +107,18 @@ export function TestCaseDrawer({ projectKey, id, onClose, onSaved }: { projectKe
         <>
           <Typography.Title level={5}>Bug liên kết</Typography.Title>
           <List size="small" locale={{ emptyText: 'Chưa có bug liên kết' }} dataSource={data.bugs} renderItem={(b: any) => (
-            <List.Item actions={canEdit ? [<a key="u" onClick={async () => { await unlinkTestCaseBug(String(id), { issueKey: b.key } as any); await refetch(); onSaved(null); }}>Gỡ</a>] : []}>
+            <List.Item actions={canLinkBug ? [<a key="u" onClick={async () => { if (!canLinkBug) return; await unlinkTestCaseBug(String(id), { issueKey: b.key } as any); await refetch(); onSaved(null); }}>Gỡ</a>] : []}>
               <Space><Link to={`/browse/${b.key}`}>{b.key}</Link>{b.title}<Tag color={b.status.color}>{b.status.name}</Tag></Space>
             </List.Item>
           )} />
-          {canEdit && (
+          {canLinkBug && (
             <Space style={{ marginTop: 8 }}>
               <Input placeholder="Mã bug (ELMS-1885)" value={bugKey} onChange={(e) => setBugKey(e.target.value.toUpperCase())} style={{ width: 180 }} />
-              <Button disabled={!bugKey} onClick={async () => { try { await linkTestCaseBug(String(id), { issueKey: bugKey }); setBugKey(''); await refetch(); onSaved(null); } catch (e) { message.error(errorMessage(e)); } }}>Gắn bug</Button>
-              <Button danger onClick={async () => { try { const r = await linkTestCaseBug(String(id), { createBug: true }); message.success(`Đã tạo bug ${r.key}`); await refetch(); onSaved(null); } catch (e) { message.error(errorMessage(e)); } }}>Tạo bug từ test case fail</Button>
+              <Button disabled={!bugKey} onClick={async () => { if (!canLinkBug) return; try { await linkTestCaseBug(String(id), { issueKey: bugKey }); setBugKey(''); await refetch(); onSaved(null); } catch (e) { message.error(errorMessage(e)); } }}>Gắn bug</Button>
+              <Button danger disabled={!canCreateBug || !canEdit} onClick={async () => { if (!canLinkBug || !canCreateBug || !canEdit) return; try { const r = await linkTestCaseBug(String(id), { createBug: true }); message.success(`Đã tạo bug ${r.key}`); await refetch(); onSaved(null); } catch (e) { message.error(errorMessage(e)); } }}>Tạo bug từ test case fail</Button>
             </Space>
           )}
-          <Collapse ghost style={{ marginTop: 16 }} items={[{ key: 'v', label: `Lịch sử phiên bản (${data.versions.length})`, children: (
+          <Collapse ghost style={{ marginTop: 16 }} items={[{ key: 'v', label: `Lịch sử phiên bản (${fmtNumber(data.versions.length)})`, children: (
             <List size="small" dataSource={data.versions} renderItem={(v: any) => (
               <List.Item><Space><Tag>v{v.version}</Tag><span>{fmtDateTime(v.changedAt)}</span><span className="muted">{v.changedBy?.displayName ?? '—'}</span><Tag color={STATUS_COLOR[v.snapshot.status]}>{STATUS_LABEL[v.snapshot.status] ?? v.snapshot.status}</Tag><span>{v.snapshot.title}</span></Space></List.Item>
             )} />

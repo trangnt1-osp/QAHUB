@@ -92,15 +92,31 @@ model ProjectMember {
   projectId BigInt   @map("project_id")
   userId    BigInt   @map("user_id")
   role      String
+  roleId    BigInt?  @map("role_id")
   joinedAt  DateTime @default(now()) @map("joined_at") @db.Timestamptz(6)
   leftAt    DateTime? @map("left_at") @db.Timestamptz(6)
   project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  roleDefinition RoleDefinition? @relation(fields: [roleId], references: [id], onDelete: Restrict)
 
   // Active participation is unique via a partial index in migration SQL.
   @@index([projectId, userId])
   @@index([projectId, leftAt])
+  @@index([roleId])
   @@map("project_members")
+}
+
+model RoleDefinition {
+  id          BigInt   @id @default(autoincrement())
+  key         String   @unique
+  name        String   @unique
+  description String?
+  permissions String[] @default([])
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  members     ProjectMember[]
+
+  @@map("role_definitions")
 }
 
 model WorkflowStatus {

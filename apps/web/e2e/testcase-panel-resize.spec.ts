@@ -7,7 +7,7 @@ test('test case tree and list resize without losing selection and remember the c
   const splitter = page.locator('.ant-splitter');
   const treePanel = splitter.locator('.ant-splitter-panel').first();
   const listPanel = splitter.locator('.ant-splitter-panel').last();
-  await expect(page.getByText('Toàn bộ test case của dự án', { exact: true })).toBeVisible();
+  await expect(page.getByTestId('checklist-summary')).toBeVisible();
   const before = (await treePanel.boundingBox())!.width;
   const listBefore = (await listPanel.boundingBox())!.width;
   const dragger = splitter.locator('.ant-splitter-bar-dragger');
@@ -20,7 +20,7 @@ test('test case tree and list resize without losing selection and remember the c
   expect((await listPanel.boundingBox())!.width).toBeLessThan(listBefore - 100);
   const resized = (await treePanel.boundingBox())!.width;
   await page.reload();
-  await expect(page.getByText('Toàn bộ test case của dự án', { exact: true })).toBeVisible();
+  await expect(page.getByTestId('checklist-summary')).toBeVisible();
   await expect.poll(async () => Math.abs((await treePanel.boundingBox())!.width - resized)).toBeLessThan(3);
   const shrink = (await dragger.boundingBox())!;
   await page.mouse.move(shrink.x + shrink.width / 2, shrink.y + shrink.height / 2);
@@ -28,7 +28,7 @@ test('test case tree and list resize without losing selection and remember the c
   await page.mouse.move(shrink.x - 120, shrink.y + shrink.height / 2, { steps: 12 });
   await page.mouse.up();
   await expect.poll(async () => (await treePanel.boundingBox())!.width).toBeLessThan(resized - 80);
-  await expect(page.getByText('Toàn bộ test case của dự án', { exact: true })).toBeVisible();
+  await expect(page.getByTestId('checklist-summary')).toBeVisible();
   await page.getByRole('treeitem').nth(2).locator('.ant-tree-node-content-wrapper').click();
   await expect(page).toHaveURL(/functionId=\d+/);
   const selectedUrl = page.url();

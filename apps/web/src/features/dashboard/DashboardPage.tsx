@@ -1,3 +1,4 @@
+import { fmtNumber } from '../../lib/number';
 import { Badge, Card, Col, List, Progress, Row, Space, Statistic, Tag, Typography } from 'antd';
 import { ListTable } from '../../components/ListTable';
 import { NumberedList } from '../../components/NumberedList';
@@ -24,12 +25,12 @@ export function DashboardPage() {
           <>
             <Row gutter={[16, 16]}>
               {[['Hoàn thành', data.cards.completedLast7d, '7 ngày qua'], ['Cập nhật', data.cards.updatedLast7d, '7 ngày qua'], ['Tạo mới', data.cards.createdLast7d, '7 ngày qua'], ['Đến hạn', data.cards.dueNext7d, '7 ngày tới']].map(([t, v, s]) => (
-                <Col key={t as string} xs={12} md={6}><Card><Statistic title={<span>{t} <span className="muted">· {s}</span></span>} value={v as number} /></Card></Col>
+                <Col key={t as string} xs={12} md={6}><Card><Statistic groupSeparator="." decimalSeparator="," title={<span>{t} <span className="muted">· {s}</span></span>} value={v as number} /></Card></Col>
               ))}
             </Row>
 
             {data.canTriage && (
-              <Card style={{ marginTop: 16 }} title={<Space>Bug auto chờ duyệt <Badge count={data.pendingReview.length} color="#722ed1" showZero /></Space>}>
+              <Card style={{ marginTop: 16 }} title={<Space>Bug auto chờ duyệt <Badge count={fmtNumber(data.pendingReview.length)} color="#722ed1" showZero /></Space>}>
                 <ListTable size="small" rowKey="id" dataSource={data.pendingReview} locale={{ emptyText: 'Không có bug nào chờ duyệt 🎉' }}
                   onRow={(r: any) => ({ onClick: () => select(r.key), style: { cursor: 'pointer' } })}
                   columns={[
@@ -52,7 +53,7 @@ export function DashboardPage() {
                       <Link to={`/projects/${g.projectKey}/backlog`}><b>{g.projectKey}</b> · {g.projectName}</Link>
                       <NumberedList rowKey="id" size="small" dataSource={g.issues} renderItem={(i: any, index) => (
                         <List.Item onClick={() => select(i.key)} style={{ cursor: 'pointer' }}>
-                          <Space><span aria-label="STT" className="muted">{index + 1}.</span><IssueTypeIcon type={i.type} /><span className="muted">{i.key}</span><span>{i.title}</span></Space>
+                          <Space><span aria-label="STT" className="muted">{fmtNumber(index + 1)}.</span><IssueTypeIcon type={i.type} /><span className="muted">{i.key}</span><span>{i.title}</span></Space>
                           <Space><PriorityIcon priority={i.priority} /><StatusTag status={i.status} /></Space>
                         </List.Item>
                       )} />
@@ -64,8 +65,8 @@ export function DashboardPage() {
                 <Card title="Lần chạy gần đây" style={{ marginBottom: 16 }}>
                   <NumberedList rowKey="id" size="small" locale={{ emptyText: 'Chưa có lần chạy nào' }} dataSource={data.recentRuns} renderItem={(r: any, index) => (
                     <List.Item onClick={() => nav(`/reports/runs/${r.id}`)} style={{ cursor: 'pointer' }}>
-                      <Space><span aria-label="STT" className="muted">{index + 1}.</span><Tag>{r.projectKey}</Tag><span>#{r.id} {r.name ?? ''}</span><span className="muted">{r.environment}</span></Space>
-                      <Space><Progress percent={r.passRate ?? 0} size="small" style={{ width: 90 }} status={r.failed ? 'exception' : 'success'} /> {r.bugsCreated > 0 && <Tag color="purple">+{r.bugsCreated} bug</Tag>}</Space>
+                      <Space><span aria-label="STT" className="muted">{fmtNumber(index + 1)}.</span><Tag>{r.projectKey}</Tag><span>#{r.id} {r.name ?? ''}</span><span className="muted">{r.environment}</span></Space>
+                      <Space><Progress format={(percent) => `${fmtNumber(percent)}%`} percent={r.passRate ?? 0} size="small" style={{ width: 90 }} status={r.failed ? 'exception' : 'success'} /> {r.bugsCreated > 0 && <Tag color="purple">+{fmtNumber(r.bugsCreated)} bug</Tag>}</Space>
                     </List.Item>
                   )} />
                 </Card>

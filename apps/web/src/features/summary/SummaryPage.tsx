@@ -1,3 +1,4 @@
+import { fmtNumber } from '../../lib/number';
 import { FilterOutlined, FullscreenOutlined } from '@ant-design/icons';
 import { Button, Card, Col, Modal, Popover, Row, Select, Space, Statistic, Typography } from 'antd';
 import { useQuery } from '@tanstack/react-query';
@@ -43,7 +44,7 @@ export default function SummaryPage() {
             <Select allowClear placeholder="Nguồn" style={{ width: '100%' }} value={source} onChange={setSource} options={[{ value: 'manual', label: 'Manual' }, { value: 'auto', label: 'Auto' }]} />
           </Space>
         }>
-          <Button icon={<FilterOutlined />}>Filter{types.length || source ? ` (${types.length + (source ? 1 : 0)})` : ''}</Button>
+          <Button icon={<FilterOutlined />}>Filter{types.length || source ? ` (${fmtNumber(types.length + (source ? 1 : 0))})` : ''}</Button>
         </Popover>
       </Space>
       <QueryBoundary isLoading={isLoading} error={error} refetch={refetch}>
@@ -56,7 +57,7 @@ export default function SummaryPage() {
                 { v: data.cards.createdLast7d, t: 'created', s: 'in the last 7 days' },
                 { v: data.cards.dueNext7d, t: 'due soon', s: 'in the next 7 days' },
               ].map((c) => (
-                <Col key={c.t} xs={12} md={6}><Card><Statistic title={<span>{c.t}<br /><span className="muted">{c.s}</span></span>} value={c.v} prefix={<span style={{ fontSize: 14 }} />} /></Card></Col>
+                <Col key={c.t} xs={12} md={6}><Card><Statistic groupSeparator="." decimalSeparator="," title={<span>{c.t}<br /><span className="muted">{c.s}</span></span>} value={c.v} prefix={<span style={{ fontSize: 14 }} />} /></Card></Col>
               ))}
             </Row>
             <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
@@ -68,9 +69,9 @@ export default function SummaryPage() {
               <Col xs={24} lg={10}>
                 <Card title="Manual và Auto" style={{ marginBottom: 16 }}>
                   <Space size={32} wrap>
-                    <Statistic title="Manual" value={data.bySource.manual} />
-                    <Statistic title="Auto" value={data.bySource.auto} valueStyle={{ color: '#722ed1' }} />
-                    <Statistic title="Chờ duyệt" value={data.bySource.pendingReview} />
+                    <Statistic groupSeparator="." decimalSeparator="," title="Manual" value={data.bySource.manual} />
+                    <Statistic groupSeparator="." decimalSeparator="," title="Auto" value={data.bySource.auto} valueStyle={{ color: '#722ed1' }} />
+                    <Statistic groupSeparator="." decimalSeparator="," title="Chờ duyệt" value={data.bySource.pendingReview} />
                   </Space>
                   {data.bySource.pendingReview > 0 && triageIds && <div style={{ marginTop: 8 }}><Button type="primary" ghost onClick={() => goBacklog(`statusIds=${triageIds}`)}>Duyệt ngay</Button></div>}
                 </Card>
@@ -102,18 +103,18 @@ function StatusDonut({ data, onSlice }: { data: { total: number; items: { status
             <Pie data={items} dataKey="count" nameKey="name" innerRadius={72} outerRadius={110} paddingAngle={1} onClick={(d: any) => onSlice(d.statusId)} cursor="pointer" isAnimationActive={false}>
               {items.map((i) => <Cell key={i.statusId} fill={i.color} />)}
             </Pie>
-            <RTooltip />
+            <RTooltip formatter={(value) => typeof value === 'number' ? fmtNumber(value) : value} />
           </PieChart>
         </ResponsiveContainer>
         <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', pointerEvents: 'none', textAlign: 'center' }}>
-          <div><div style={{ fontSize: 28, fontWeight: 700 }}>{data.total}</div><div className="muted" style={{ fontSize: 12 }}>Total work items</div></div>
+          <div><div style={{ fontSize: 28, fontWeight: 700 }}>{fmtNumber(data.total)}</div><div className="muted" style={{ fontSize: 12 }}>Total work items</div></div>
         </div>
       </div>
       <div style={{ maxHeight: 220, overflow: 'auto', flex: 1, minWidth: 180 }}>
         {data.items.map((i) => (
           <div key={i.statusId} onClick={() => i.count && onSlice(i.statusId)} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '3px 0', cursor: i.count ? 'pointer' : 'default' }}>
             <span style={{ width: 10, height: 10, borderRadius: 2, background: i.color, display: 'inline-block' }} />
-            <span>{i.name}: <b>{i.count}</b></span>
+            <span>{i.name}: <b>{fmtNumber(i.count)}</b></span>
           </div>
         ))}
       </div>
@@ -129,7 +130,7 @@ function Bars({ rows }: { rows: { label: React.ReactNode; count: number }[] }) {
         <div key={i} style={{ display: 'grid', gridTemplateColumns: '120px 1fr 40px', alignItems: 'center', gap: 8, marginBottom: 4 }}>
           <div>{r.label}</div>
           <div style={{ background: '#f0f0f0', borderRadius: 3, height: 10 }}><div style={{ width: `${(r.count / max) * 100}%`, background: '#f51d53', height: 10, borderRadius: 3 }} /></div>
-          <div style={{ textAlign: 'right' }}>{r.count}</div>
+          <div style={{ textAlign: 'right' }}>{fmtNumber(r.count)}</div>
         </div>
       ))}
     </div>

@@ -30,7 +30,8 @@ export class AttachmentsService {
     if (dto.size > MAX_ATTACHMENT_BYTES) throw new AppException(413, ERROR_CODES.ATTACHMENT_TOO_LARGE, 'File vượt quá 200 MB');
     const entityId = BigInt(dto.entityId);
     const project = await this.projectOf(dto.entity, entityId);
-    await this.projectCtx.requireRole(user, project.id, 'developer');
+    await this.projectCtx.requirePermission(user, project.id, 'attachment.create');
+    await this.projectCtx.requirePermission(user, project.id, dto.entity === 'automation_result' ? 'report.view' : 'issue.view');
     const id = (await this.prisma.$queryRaw<{ id: string }[]>`SELECT gen_random_uuid()::text AS id`)[0].id;
     const objectKey = `${project.key}/${dto.entity}/${entityId}/${id}-${safeName(dto.fileName)}`;
     await this.prisma.attachment.create({
@@ -39,8 +40,9 @@ export class AttachmentsService {
     return { id, uploadUrl: await this.storage.presignPut(objectKey, dto.mimeType) };
   }
 
-  async complete(id: string) {
+  async complete(id: string, user: AuthUser) {
     const a = await this.prisma.attachment.findUnique({ where: { id } });
+    if (a) await this.projectCtx.requirePermission(user, a.projectId, a.entity === 'automation_result' ? 'report.view' : 'issue.view');
     if (!a) throw notFound(ERROR_CODES.ATTACHMENT_NOT_FOUND, 'Không tìm thấy file');
     const head = await this.storage.head(a.objectKey);
     if (!head) {
@@ -51,8 +53,9 @@ export class AttachmentsService {
     return { id: updated.id, status: updated.status, sizeBytes: updated.sizeBytes };
   }
 
-  async url(id: string) {
+  async url(id: string, user: AuthUser) {
     const a = await this.prisma.attachment.findUnique({ where: { id } });
+    if (a) await this.projectCtx.requirePermission(user, a.projectId, a.entity === 'automation_result' ? 'report.view' : 'issue.view');
     if (!a || a.status !== 'ready') throw notFound(ERROR_CODES.ATTACHMENT_NOT_FOUND, 'Không tìm thấy file');
     return { url: await this.storage.presignGet(a.objectKey, a.fileName, 3600, a.mimeType), fileName: a.fileName, mimeType: a.mimeType, expiresInSec: 3600 };
   }

@@ -1,11 +1,12 @@
 import { Injectable } from '@nestjs/common';
-import { ERROR_CODES, SYSTEM_LABELS, WorkflowTemplateDefinition, DEFAULT_TEST_CATEGORIES } from '@ospm/shared';
+import { BUILTIN_ROLE_PERMISSIONS, ERROR_CODES, normalizePermissions, Permission, ProjectRole, SYSTEM_LABELS, WorkflowTemplateDefinition, DEFAULT_TEST_CATEGORIES } from '@ospm/shared';
 import { ActivityService } from '../activity/activity.service';
-import { AppException, badRequest, notFound } from '../common/errors';
+import { AppException, badRequest, forbidden, notFound } from '../common/errors';
 import { PrismaService, Tx } from '../common/prisma.service';
 import { applyTemplateDefinition } from '../workflows/workflow-bootstrap';
 import { AddMemberDto, CreateProjectDto, UpdateMemberDto, UpdateProjectDto, UpdateSettingsDto } from './projects.dto';
 import type { AuthUser } from '../common/decorators';
+import { builtinPermissionMap, builtinPermissions, isBuiltinRole } from '../roles/builtin-roles';
 
 const LABEL_COLORS: Record<string, string> = { manual: '#8c8c8c', auto: '#722ed1' };
 const projectDate = (value: string | null | undefined) => value === undefined ? undefined : value === null ? null : new Date(`${value}T00:00:00.000Z`);
@@ -22,9 +23,10 @@ export class ProjectsService {
   constructor(private readonly prisma: PrismaService, private readonly activity: ActivityService) {}
 
   async list(user: AuthUser) {
+    const builtins = user.systemRole === 'admin' ? BUILTIN_ROLE_PERMISSIONS : await builtinPermissionMap(this.prisma);
     const projects = await this.prisma.project.findMany({
       where: { deletedAt: null, ...(user.systemRole === 'admin' ? {} : { members: { some: { userId: user.id, leftAt: null } } }) },
-      include: { lead: { select: { id: true, displayName: true, avatarUrl: true } }, members: { where: { userId: user.id, leftAt: null }, select: { role: true } } },
+      include: { lead: { select: { id: true, displayName: true, avatarUrl: true } }, members: { where: { userId: user.id, leftAt: null }, select: { role: true, roleId: true, roleDefinition: { select: { permissions: true } } } } },
       orderBy: { key: 'asc' },
     });
     const ids = projects.map((p) => p.id);
@@ -40,13 +42,20 @@ export class ProjectsService {
     const openBy = new Map(open.map((r) => [r.project_id, Number(r.n)]));
     const pendBy = new Map(pending.map((r) => [r.project_id, Number(r.n)]));
     const sprintBy = new Map(sprints.map((s) => [s.projectId, s]));
-    return projects.map((p) => ({
-      id: p.id, key: p.key, name: p.name, trackingMode: p.trackingMode, description: p.description, lead: p.lead, startDate: p.startDate, endDate: p.endDate, createdAt: p.createdAt,
+    return projects.flatMap((p) => {
+      const membership = p.members[0];
+      const permissions = user.systemRole === 'admin' ? BUILTIN_ROLE_PERMISSIONS.admin : membership?.roleId ? normalizePermissions(membership.roleDefinition?.permissions ?? []) : builtins[membership?.role as ProjectRole] ?? [];
+      if (!permissions.includes('project.view')) return [];
+      const info = permissions.includes('project.info.view');
+      const issues = permissions.includes('issue.view');
+      return [{
+      id: p.id, key: p.key, name: p.name, trackingMode: p.trackingMode, description: info ? p.description : undefined, lead: info ? p.lead : undefined, startDate: info ? p.startDate : undefined, endDate: info ? p.endDate : undefined, createdAt: info ? p.createdAt : undefined,
       myRole: user.systemRole === 'admin' ? 'admin' : p.members[0]?.role ?? null,
-      openIssues: openBy.get(p.id) ?? 0,
-      pendingReview: pendBy.get(p.id) ?? 0,
-      activeSprint: sprintBy.get(p.id) ?? null,
-    }));
+      openIssues: issues ? openBy.get(p.id) ?? 0 : undefined,
+      pendingReview: issues ? pendBy.get(p.id) ?? 0 : undefined,
+      activeSprint: permissions.includes('period.view') ? sprintBy.get(p.id) ?? null : undefined,
+    }];
+    });
   }
 
   async create(dto: CreateProjectDto, actor: AuthUser) {
@@ -76,9 +85,11 @@ export class ProjectsService {
     });
   }
 
-  async get(projectId: bigint, role: string) {
+  async get(projectId: bigint, role: string, permissions?: Permission[]) {
     const p = await this.prisma.project.findUniqueOrThrow({ where: { id: projectId }, include: { lead: { select: { id: true, displayName: true, avatarUrl: true } } } });
-    return { id: p.id, key: p.key, name: p.name, trackingMode: p.trackingMode, description: p.description, lead: p.lead, startDate: p.startDate, endDate: p.endDate, settings: p.settings, createdAt: p.createdAt, myRole: role };
+    const info = !permissions || permissions.includes('project.info.view');
+    const settings = !permissions || permissions.includes('settings.general.view');
+    return { id: p.id, key: p.key, name: p.name, trackingMode: p.trackingMode, description: info ? p.description : undefined, lead: info ? p.lead : undefined, startDate: info ? p.startDate : undefined, endDate: info ? p.endDate : undefined, settings: settings ? p.settings : undefined, createdAt: info ? p.createdAt : undefined, myRole: role };
   }
 
   async update(projectId: bigint, dto: UpdateProjectDto, actorId: bigint) {
@@ -120,19 +131,43 @@ export class ProjectsService {
   }
 
   // ----- Thành viên -----
-  listMembers(projectId: bigint, includeHistory = false) {
-    return this.prisma.projectMember
-      .findMany({ where: { projectId, ...(!includeHistory ? { leftAt: null } : {}) }, include: { user: { select: { id: true, email: true, displayName: true, avatarUrl: true, isActive: true } } }, orderBy: [{ joinedAt: 'asc' }, { id: 'asc' }] })
-      .then((rows) => rows.map((m) => ({ id: m.id, userId: m.userId, role: m.role, joinedAt: m.joinedAt, leftAt: m.leftAt, user: m.user })));
+  memberOptions(projectId: bigint) {
+    return this.prisma.projectMember.findMany({ where: { projectId, leftAt: null }, include: { user: { select: { id: true, displayName: true, avatarUrl: true } } }, orderBy: { id: 'asc' } })
+      .then((rows) => rows.map((member) => ({ id: member.id, userId: member.userId, user: member.user })));
   }
 
-  async addMember(projectId: bigint, dto: AddMemberDto) {
+  private async membershipRole(tx: Tx, dto: { role?: ProjectRole; roleId?: number }, actorPermissions?: Permission[]) {
+    if ((dto.role === undefined) === (dto.roleId === undefined)) throw badRequest(ERROR_CODES.VALIDATION_ERROR, 'Chọn đúng một vai trò có sẵn hoặc vai trò tùy chỉnh');
+    let permissions: Permission[];
+    let role: ProjectRole = dto.role ?? 'viewer';
+    let roleId: bigint | null = null;
+    if (dto.roleId !== undefined) {
+      roleId = BigInt(dto.roleId);
+      await tx.$queryRaw`SELECT id FROM role_definitions WHERE id = ${roleId} FOR UPDATE`;
+      const definition = await tx.roleDefinition.findUnique({ where: { id: roleId } });
+      if (!definition) throw notFound(ERROR_CODES.NOT_FOUND, 'Không tìm thấy vai trò');
+      if (isBuiltinRole(definition.key)) throw badRequest(ERROR_CODES.VALIDATION_ERROR, 'Chọn vai trò mặc định bằng mã vai trò.');
+      permissions = normalizePermissions(definition.permissions);
+      role = 'viewer';
+    } else permissions = await builtinPermissions(tx, role);
+    if (actorPermissions && !permissions.every((permission) => actorPermissions.includes(permission))) throw forbidden('Không thể gán vai trò có quyền vượt quá quyền của bạn');
+    return { role, roleId };
+  }
+
+  listMembers(projectId: bigint, includeHistory = false) {
+    return this.prisma.projectMember
+      .findMany({ where: { projectId, ...(!includeHistory ? { leftAt: null } : {}) }, include: { roleDefinition: true, user: { select: { id: true, email: true, displayName: true, avatarUrl: true, isActive: true } } }, orderBy: [{ joinedAt: 'asc' }, { id: 'asc' }] })
+      .then((rows) => rows.map((m) => ({ id: m.id, userId: m.userId, role: m.role, roleId: m.roleId, roleName: m.roleDefinition?.name ?? m.role, joinedAt: m.joinedAt, leftAt: m.leftAt, user: m.user })));
+  }
+
+  async addMember(projectId: bigint, dto: AddMemberDto, actorPermissions?: Permission[]) {
     const userId = BigInt(dto.userId);
     if (!(await this.prisma.user.findUnique({ where: { id: userId } }))) throw notFound(ERROR_CODES.USER_NOT_FOUND, 'Không tìm thấy người dùng');
     const joinedAt = dto.joinedAt ? projectDate(dto.joinedAt)! : new Date();
     if (memberDay(joinedAt) > memberDay(new Date())) throw badRequest(ERROR_CODES.VALIDATION_ERROR, 'Ngày tham gia không được ở tương lai');
     return this.prisma.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT id FROM projects WHERE id = ${projectId} FOR UPDATE`;
+      const assignment = await this.membershipRole(tx, dto, actorPermissions);
       if (await tx.projectMember.findFirst({ where: { projectId, userId, leftAt: null } })) {
         throw new AppException(409, ERROR_CODES.MEMBER_EXISTS, 'Người dùng đã là thành viên dự án');
       }
@@ -140,7 +175,7 @@ export class ProjectsService {
       if (previous?.leftAt && memberDay(joinedAt) < memberDay(previous.leftAt)) {
         throw badRequest(ERROR_CODES.VALIDATION_ERROR, 'Ngày tham gia lại không được trước ngày rời lần trước');
       }
-      return tx.projectMember.create({ data: { projectId, userId, role: dto.role, joinedAt } });
+      return tx.projectMember.create({ data: { projectId, userId, ...assignment, joinedAt } });
     });
   }
 
@@ -156,12 +191,13 @@ export class ProjectsService {
     }
   }
 
-  async updateMember(projectId: bigint, userId: bigint, dto: UpdateMemberDto) {
+  async updateMember(projectId: bigint, userId: bigint, dto: UpdateMemberDto, actorPermissions?: Permission[]) {
     return this.prisma.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT id FROM projects WHERE id = ${projectId} FOR UPDATE`;
       const member = await this.activeMember(tx, projectId, userId);
-      if (dto.role !== 'admin') await this.assertNotLastAdmin(tx, projectId, member.role);
-      return tx.projectMember.update({ where: { id: member.id }, data: { role: dto.role } });
+      const assignment = await this.membershipRole(tx, dto, actorPermissions);
+      if (assignment.role !== 'admin') await this.assertNotLastAdmin(tx, projectId, member.role);
+      return tx.projectMember.update({ where: { id: member.id }, data: assignment });
     });
   }
 

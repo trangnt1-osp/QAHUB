@@ -5,7 +5,8 @@ import { randomUUID } from 'node:crypto';
 import { ActivityService } from '../activity/activity.service';
 import { parseId } from '../common/bigint';
 import { AuthUser, ProjectContext } from '../common/decorators';
-import { AppException, conflict, notFound, unprocessable } from '../common/errors';
+import { AppException, conflict, forbidden, notFound, unprocessable } from '../common/errors';
+import { ProjectContextService } from '../common/project-context.service';
 import { clampLimit, decodeCursor, encodeCursor } from '../common/pagination';
 import { PrismaService, Tx } from '../common/prisma.service';
 import { allocateIssueNumber, doc, findIssueByKey, rankAtEnd, recordStatusChange } from '../issues/issue-core';
@@ -47,6 +48,7 @@ export class TestCasesService implements OnModuleInit {
     private readonly activity: ActivityService,
     private readonly queue: QueueService,
     private readonly jobs: JobsService,
+    private readonly projectCtx: ProjectContextService,
   ) {}
 
   onModuleInit() {
@@ -259,7 +261,7 @@ export class TestCasesService implements OnModuleInit {
   }
 
   async bulk(project: ProjectContext, dto: BulkTestCasesDto, user: AuthUser) {
-    if (dto.set.deleted && !['tester', 'admin'].includes(project.role)) {
+    if (dto.set.deleted && !(project.permissions ? project.permissions.includes('testcase.delete') : ['tester', 'admin'].includes(project.role))) {
       throw new AppException(403, ERROR_CODES.FORBIDDEN, 'Chỉ tester và admin dự án được xóa test case');
     }
     const ids = await this.resolveIds(project.id, dto);
@@ -273,6 +275,11 @@ export class TestCasesService implements OnModuleInit {
   }
 
   private async runBulkJob(d: { projectId: string; userId: string; ids: string[]; set: BulkTestCasesDto['set'] }) {
+    const user = await this.prisma.user.findUnique({ where: { id: BigInt(d.userId) } });
+    if (!user?.isActive) throw forbidden('Người thực hiện không còn hoạt động.');
+    const project = await this.prisma.project.findFirst({ where: { id: BigInt(d.projectId), deletedAt: null }, select: { id: true } });
+    if (!project) throw forbidden('Dự án không còn hoạt động.');
+    await this.projectCtx.requirePermission(user, project.id, d.set.deleted ? 'testcase.delete' : 'testcase.edit');
     const updated = await this.applyBulk(BigInt(d.projectId), BigInt(d.userId), d.ids.map(BigInt), d.set);
     return { updated };
   }

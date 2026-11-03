@@ -1,10 +1,10 @@
 import { CanActivate, ExecutionContext, Injectable } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { AuthGuard } from '@nestjs/passport';
-import { ERROR_CODES, PROJECT_ROLE_RANK, ProjectRole as ProjectRoleName } from '@ospm/shared';
-import { IS_API_KEY, IS_PUBLIC, PROJECT_ROLE, SYSTEM_ROLE } from './decorators';
+import { ERROR_CODES, Permission, PROJECT_ROLE_RANK, ProjectRole as ProjectRoleName } from '@ospm/shared';
+import { IS_API_KEY, IS_PUBLIC, PROJECT_PERMISSION, PROJECT_ROLE, SYSTEM_ROLE } from './decorators';
+import { ENDPOINT_PERMISSIONS, mutationPermissions } from './permission-policy';
 import { AppException, forbidden } from './errors';
-import { PrismaService } from './prisma.service';
 import { ProjectContextService } from './project-context.service';
 
 @Injectable()
@@ -29,7 +29,6 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
 export class RolesGuard implements CanActivate {
   constructor(
     private readonly reflector: Reflector,
-    private readonly prisma: PrismaService,
     private readonly projectCtx: ProjectContextService,
   ) {}
 
@@ -47,20 +46,20 @@ export class RolesGuard implements CanActivate {
     if (!projRole) return true;
 
     const project = await this.projectCtx.resolve(req.params, projRole.resolver);
-    let role: ProjectRoleName | null = null;
-    if (user.systemRole === 'admin') role = 'admin';
-    else {
-      const m = await this.prisma.projectMember.findFirst({
-        where: { projectId: project.id, userId: user.id, leftAt: null },
-        select: { role: true },
-      });
-      role = (m?.role as ProjectRoleName) ?? null;
+    const access = await this.projectCtx.accessOf(user, project.id);
+    if (!access) throw forbidden('Bạn không phải thành viên của dự án này');
+    const endpoint = `${ctx.getClass().name}.${ctx.getHandler().name}`;
+    const policy = this.reflector.getAllAndOverride<Permission[]>(PROJECT_PERMISSION, targets) ?? ENDPOINT_PERMISSIONS[endpoint];
+    const required = typeof policy === 'string' ? [policy] : policy;
+    if (user.systemRole !== 'admin') {
+      if (required) {
+        if (!required.some((permission) => access.permissions.includes(permission))) throw forbidden('Bạn không có quyền truy cập mục hoặc thao tác này');
+      } else if (access.roleId || PROJECT_ROLE_RANK[access.role] < PROJECT_ROLE_RANK[projRole.role]) {
+        throw forbidden('Bạn không có quyền thực hiện thao tác này');
+      }
+      if (!mutationPermissions(endpoint, req.body).every((permission) => access.permissions.includes(permission))) throw forbidden('Bạn không có quyền thực hiện một số thao tác trong yêu cầu');
     }
-    if (!role) throw forbidden('Bạn không phải thành viên của dự án này');
-    if (PROJECT_ROLE_RANK[role] < PROJECT_ROLE_RANK[projRole.role]) {
-      throw forbidden(`Cần vai trò ${projRole.role} trở lên trong dự án`);
-    }
-    req.project = { ...project, role };
+    req.project = { ...project, ...access };
     return true;
   }
 }

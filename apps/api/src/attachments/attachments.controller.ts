@@ -16,12 +16,12 @@ export class AttachmentsController {
   }
 
   @ProjectRole('developer', 'attachment') @Post(':id/complete') @HttpCode(200)
-  completeAttachment(@Param('id') id: string) {
-    return this.attachments.complete(id);
+  completeAttachment(@Param('id') id: string, @CurrentUser() user: AuthUser) {
+    return this.attachments.complete(id, user);
   }
 
   @ProjectRole('viewer', 'attachment') @Get(':id/url')
-  getAttachmentUrl(@Param('id') id: string) {
-    return this.attachments.url(id);
+  getAttachmentUrl(@Param('id') id: string, @CurrentUser() user: AuthUser) {
+    return this.attachments.url(id, user);
   }
 }

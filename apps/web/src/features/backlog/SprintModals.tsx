@@ -1,3 +1,4 @@
+import { fmtNumber } from '../../lib/number';
 import { Alert, App, DatePicker, Form, Input, Modal, Radio, Space, Typography } from 'antd';
 import { useQueryClient } from '@tanstack/react-query';
 import dayjs from 'dayjs';
@@ -15,7 +16,7 @@ export function StartSprintModal({ sprint, open, onClose }: { sprint: Sprint | n
   useEffect(() => { if (open && sprint) form.setFieldsValue({ range: [sprint.startDate ? dayjs(sprint.startDate) : dayjs(), sprint.endDate ? dayjs(sprint.endDate) : dayjs(sprint.startDate ?? undefined).add(14, 'day')], goal: sprint.goal }); }, [open, sprint, form]);
   return <Modal title={`Bắt đầu ${sprint?.name ?? ''}`} open={open} onCancel={onClose} onOk={() => form.submit()} confirmLoading={saving} okText="Bắt đầu" cancelText="Hủy" destroyOnClose>
     <Form form={form} layout="vertical" disabled={saving} onFinish={async (v) => {
-      if (!sprint || saving) return;
+      if (!open || !sprint || saving) return;
       setSaving(true);
       try { await startSprint(String(sprint.id), { startDate: v.range[0].format('YYYY-MM-DD'), endDate: v.range[1].format('YYYY-MM-DD'), goal: v.goal }); message.success(`Đã bắt đầu ${label}`); await qc.invalidateQueries(); onClose(); }
       catch (e) { message.error(errorMessage(e)); } finally { setSaving(false); }
@@ -35,7 +36,7 @@ export function EditSprintModal({ sprint, open, onClose }: { sprint: Sprint | nu
   useEffect(() => { if (open && sprint) form.setFieldsValue({ name: sprint.name, goal: sprint.goal, range: sprint.startDate || sprint.endDate ? [sprint.startDate ? dayjs(sprint.startDate) : null, sprint.endDate ? dayjs(sprint.endDate) : null] : undefined }); }, [open, sprint, form]);
   return <Modal title={`Sửa ${label}`} open={open} onCancel={onClose} onOk={() => form.submit()} confirmLoading={saving} okText="Lưu" cancelText="Hủy" destroyOnClose>
     <Form form={form} layout="vertical" disabled={saving} onFinish={async (v) => {
-      if (!sprint || saving) return;
+      if (!open || !sprint || saving) return;
       setSaving(true);
       try { await updateSprint(String(sprint.id), { name: v.name.trim(), goal: v.goal ?? null, startDate: v.range?.[0]?.format('YYYY-MM-DD') ?? null, endDate: v.range?.[1]?.format('YYYY-MM-DD') ?? null }); await qc.invalidateQueries(); onClose(); }
       catch (e) { message.error(errorMessage(e)); } finally { setSaving(false); }
@@ -59,13 +60,13 @@ export function CompleteSprintModal({ sprint, done, open, notDone, futureSprints
   useEffect(() => { if (open) setTarget('backlog'); }, [open]);
   return <Modal title={`Hoàn thành ${sprint?.name ?? ''}`} open={open} onCancel={onClose} okText={`Hoàn thành ${label}`} cancelText="Hủy" confirmLoading={saving} destroyOnClose
     okButtonProps={{ disabled: phase && notDone > 0 }} onOk={async () => {
-      if (!sprint || saving || (phase && notDone > 0)) return;
+      if (!open || !sprint || saving || (phase && notDone > 0)) return;
       setSaving(true);
       try { await completeSprint(String(sprint.id), { moveOpenIssuesTo: phase ? 'backlog' : target }); message.success(`Đã hoàn thành ${label}`); await qc.invalidateQueries(); onClose(); }
       catch (e) { message.error(errorMessage(e)); } finally { setSaving(false); }
     }}>
     <Space direction="vertical" style={{ width: '100%' }}>
-      <Typography.Text><b>{done}</b> item đã xong, <b>{notDone}</b> item chưa xong.</Typography.Text>
+      <Typography.Text><b>{fmtNumber(done)}</b> item đã xong, <b>{fmtNumber(notDone)}</b> item chưa xong.</Typography.Text>
       {phase && notDone > 0 && <Alert type="warning" showIcon message="Cần hoàn thành tất cả item trước khi hoàn thành phase." />}
       {!phase && notDone > 0 && <>
         <Typography.Text>Chuyển các item chưa xong tới:</Typography.Text>

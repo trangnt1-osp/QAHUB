@@ -1,3 +1,4 @@
+import { fmtNumber } from '../../lib/number';
 import { DownOutlined, EllipsisOutlined, RightOutlined } from '@ant-design/icons';
 import { closestCorners, DndContext, DragEndEvent, DragOverlay, DragStartEvent, PointerSensor, useDroppable, useSensor, useSensors } from '@dnd-kit/core';
 import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
@@ -17,7 +18,7 @@ import { PriorityIcon } from '../../components/PriorityIcon';
 import { SourceTag } from '../../components/SourceTag';
 import { UserAvatar } from '../../components/UserAvatar';
 import { fmtEstimate } from '../../lib/date';
-import { useCan } from '../auth/authStore';
+import { usePermission } from '../auth/authStore';
 import { CompleteSprintModal } from '../backlog/SprintModals';
 import { useSelectedIssue } from '../issues/useSelectedIssue';
 import { useUi } from '../../stores/ui';
@@ -37,7 +38,9 @@ export default function BoardPage() {
   const qc = useQueryClient();
   const { message } = App.useApp();
   const { select } = useSelectedIssue();
-  const canEdit = useCan(projectKey, 'developer');
+  const canTransition = usePermission(projectKey, 'issue.transition');
+  const canComplete = usePermission(projectKey, 'period.complete');
+  const canEdit = usePermission(projectKey, 'issue.edit');
   const { data: members = [] } = useMembers(projectKey);
   const assignees = useUi((s) => s.assigneeFilter[projectKey] ?? EMPTY);
   const setAssignees = useUi((s) => s.setAssigneeFilter);
@@ -54,7 +57,7 @@ export default function BoardPage() {
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
 
-  const allowed = useMemo(() => new Set(dragFrom ? board?.transitionMap[String(dragFrom.statusId)] ?? [] : []), [dragFrom, board]);
+  const allowed = useMemo(() => new Set(dragFrom && canTransition ? board?.transitionMap[String(dragFrom.statusId)] ?? [] : []), [dragFrom, board, canTransition]);
 
   const findCard = (id: string) => {
     for (const lane of board?.lanes ?? []) for (const [sid, list] of Object.entries(lane.cells)) {
@@ -67,7 +70,7 @@ export default function BoardPage() {
   const onDragEnd = async (e: DragEndEvent) => {
     const from = dragFrom;
     setDragFrom(null);
-    if (!from || !e.over || !board || !canEdit) return;
+    if (!from || !e.over || !board || (!canEdit && !canTransition)) return;
     const overId = String(e.over.id);
     let toStatus: number; let toLane: string; let overIssue: IssueRow | undefined;
     if (overId.startsWith('cell:')) { const [, laneId, sid] = overId.split(':'); toLane = laneId; toStatus = Number(sid); }
@@ -75,6 +78,7 @@ export default function BoardPage() {
     const key = from.issue.key;
 
     if (toStatus !== from.statusId) {
+      if (!canTransition) return;
       if (!allowed.has(String(toStatus))) { message.warning('Không có bước chuyển hợp lệ tới cột này'); return; }
       // lạc quan: chuyển thẻ sang cột mới
       const prev = board;
@@ -97,7 +101,7 @@ export default function BoardPage() {
       return;
     }
     // cùng cột: đổi thứ tự
-    if (!overIssue || overIssue.id === from.issue.id) return;
+    if (!canEdit || !overIssue || overIssue.id === from.issue.id) return;
     const prev = board;
     const lane = board.lanes.find((l) => l.id === toLane)!;
     const list = lane.cells[String(toStatus)];
@@ -121,7 +125,7 @@ export default function BoardPage() {
         <Select value={groupBy} onChange={setGroupBy} style={{ width: 170 }} options={[{ value: 'none', label: 'Group: None' }, { value: 'assignee', label: 'Group: Assignee' }, { value: 'parent', label: 'Group: Sub-task' }]} />
         <div style={{ flex: 1 }} />
         {phase && !!board?.activePeriods?.length ? <Select aria-label="Phase đang thực hiện" style={{ minWidth: 200 }} value={sprint?.id} options={board.activePeriods.map((period) => ({ value: period.id, label: period.name }))} onChange={(id) => setSearchParams((prev) => { const next = new URLSearchParams(prev); next.set('sprintId', String(id)); return next; })} /> : sprint && <span className="muted">{sprint.name}</span>}
-        {sprint && canEdit && <Button type="primary" onClick={() => setCompleteOpen(true)}>{phase ? 'Hoàn thành phase' : 'Complete sprint'}</Button>}
+        {sprint && canComplete && <Button type="primary" onClick={() => setCompleteOpen(true)}>{phase ? 'Hoàn thành phase' : 'Complete sprint'}</Button>}
         {sprint && <Dropdown menu={{ items: [{ key: 'b', label: 'Mở Backlog', onClick: () => nav(`/projects/${projectKey}/backlog`) }] }}><Button icon={<EllipsisOutlined />} /></Dropdown>}
       </Space>
 
@@ -134,21 +138,21 @@ export default function BoardPage() {
           <div style={{ overflowX: 'auto' }}>
             <div style={{ display: 'flex', gap: 8, minWidth: board!.columns.length * 270, position: 'sticky', top: 0, zIndex: 2 }}>
               {board!.columns.map((c) => (
-                <div key={c.id} style={{ flex: 1, minWidth: 260, padding: '4px 8px', fontWeight: 600, fontSize: 12, color: '#5e6c84', background: '#f5f6f8' }}>{c.name.toUpperCase()} {c.count ?? 0}</div>
+                <div key={c.id} style={{ flex: 1, minWidth: 260, padding: '4px 8px', fontWeight: 600, fontSize: 12, color: '#5e6c84', background: '#f5f6f8' }}>{c.name.toUpperCase()} {fmtNumber(c.count ?? 0)}</div>
               ))}
             </div>
             {board!.lanes.map((lane) => (
               <div key={lane.id} style={{ marginBottom: 12 }}>
                 {(groupBy !== 'none') && (
                   <div style={{ margin: '6px 0', cursor: 'pointer', fontWeight: 600 }} onClick={() => setCollapsedLanes((s) => { const n = new Set(s); n.has(lane.id) ? n.delete(lane.id) : n.add(lane.id); return n; })}>
-                    {collapsedLanes.has(lane.id) ? <RightOutlined /> : <DownOutlined />} {lane.label} <span className="muted">{lane.count}</span>
+                    {collapsedLanes.has(lane.id) ? <RightOutlined /> : <DownOutlined />} {lane.label} <span className="muted">{fmtNumber(lane.count)}</span>
                   </div>
                 )}
                 {!collapsedLanes.has(lane.id) && (
                   <div style={{ display: 'flex', gap: 8, minWidth: board!.columns.length * 270 }}>
                     {board!.columns.map((c) => (
                       <Cell key={c.id} laneId={lane.id} column={c} cards={lane.cells[String(c.id)] ?? []} dim={!!dragFrom && c.id !== dragFrom.statusId && !allowed.has(String(c.id))}
-                        canEdit={canEdit} onOpen={(k) => select(k)} />
+                        canEdit={canEdit || canTransition} onOpen={(k) => select(k)} />
                     ))}
                   </div>
                 )}
@@ -158,7 +162,7 @@ export default function BoardPage() {
           <DragOverlay>{dragFrom ? <CardView issue={dragFrom.issue} overlay /> : null}</DragOverlay>
         </DndContext>
       )}
-      <CompleteSprintModal sprint={sprint ?? null} open={completeOpen} onClose={() => setCompleteOpen(false)}
+      <CompleteSprintModal sprint={sprint ?? null} open={completeOpen && canComplete} onClose={() => setCompleteOpen(false)}
         done={allSprints.find((period) => period.id === sprint?.id)?.doneCount ?? (board?.lanes ?? []).reduce((a, l) => a + Object.values(l.cells).flat().filter((i) => i.status.category === 'done').length, 0)}
         notDone={allSprints.find((period) => period.id === sprint?.id)?.openCount ?? (board?.lanes ?? []).reduce((a, l) => a + Object.values(l.cells).flat().filter((i) => i.status.category !== 'done').length, 0)}
         futureSprints={allSprints.filter((s) => s.state === 'future')} />

@@ -16,9 +16,9 @@ describe('Excel & test case helpers', () => {
     expect(formatCode('NDS-U-00796', 20)).toBe('CL_NDS-U-00796-020');
     expect(formatCode('NDS-U-00796', 1234)).toBe('CL_NDS-U-00796-1234');
   });
-  it('progress = passed / (total - N/A)', () => {
-    expect(progressOf({ total: 10, passed: 5, na: 0 })).toBe(50);
-    expect(progressOf({ total: 10, passed: 4, na: 2 })).toBe(50);
-    expect(progressOf({ total: 3, passed: 0, na: 3 })).toBe(0);
+  it('progress = (passed + failed) / total', () => {
+    expect(progressOf({ total: 10, passed: 5, failed: 0, na: 0 })).toBe(50);
+    expect(progressOf({ total: 10, passed: 4, failed: 1, na: 2 })).toBe(50);
+    expect(progressOf({ total: 3, passed: 0, failed: 0, na: 3 })).toBe(0);
   });
 });

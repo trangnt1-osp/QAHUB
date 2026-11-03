@@ -33,7 +33,7 @@ describe('Projects, workflow, issues', () => {
 
   it('transition validation returns 422 TRANSITION_NOT_ALLOWED and admin bypasses', async () => {
     const created = await ctx.http().post(api('/projects/ELMS/issues')).set(auth(tokens.developer)).send({ type: 'task', title: 'T' }).expect(201);
-    const statuses = (await ctx.http().get(api('/projects/ELMS/workflow')).set(auth(tokens.developer)).expect(200)).body.statuses;
+    const statuses = (await ctx.http().get(api('/projects/ELMS/workflow/runtime')).set(auth(tokens.developer)).expect(200)).body.statuses;
     const done = statuses.find((s: any) => s.name === 'Done');
     const res = await ctx.http().post(api(`/issues/${created.body.key}/transitions`)).set(auth(tokens.developer)).send({ toStatusId: done.id }).expect(422);
     expect(res.body.code).toBe('TRANSITION_NOT_ALLOWED');

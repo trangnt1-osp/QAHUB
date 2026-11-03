@@ -1,11 +1,12 @@
 import { Injectable } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
-import { ERROR_CODES } from '@ospm/shared';
+import { BUILTIN_ROLE_PERMISSIONS, ERROR_CODES, normalizePermissions, type ProjectRole } from '@ospm/shared';
 import * as argon2 from 'argon2';
 import { createHash, randomBytes } from 'node:crypto';
 import { REFRESH_TOKEN_TTL_DAYS } from '../common/config';
 import { AppException } from '../common/errors';
 import { PrismaService } from '../common/prisma.service';
+import { builtinPermissionMap } from '../roles/builtin-roles';
 
 export const sha256 = (s: string) => createHash('sha256').update(s).digest('hex');
 
@@ -57,12 +58,14 @@ export class AuthService {
 
   async me(userId: bigint) {
     const user = await this.prisma.user.findUniqueOrThrow({ where: { id: userId } });
+    const builtins = user.systemRole === 'admin' ? BUILTIN_ROLE_PERMISSIONS : await builtinPermissionMap(this.prisma);
     const projects =
       user.systemRole === 'admin'
-        ? (await this.prisma.project.findMany({ where: { deletedAt: null }, orderBy: { key: 'asc' } })).map((p) => ({ projectId: p.id, projectKey: p.key, projectName: p.name, role: 'admin' }))
+        ? (await this.prisma.project.findMany({ where: { deletedAt: null }, orderBy: { key: 'asc' } })).map((p) => ({ projectId: p.id, projectKey: p.key, projectName: p.name, role: 'admin', roleId: null, roleName: 'Admin', permissions: BUILTIN_ROLE_PERMISSIONS.admin }))
         : (
-            await this.prisma.projectMember.findMany({ where: { userId, leftAt: null, project: { deletedAt: null } }, include: { project: true }, orderBy: { project: { key: 'asc' } } })
-          ).map((m) => ({ projectId: m.projectId, projectKey: m.project.key, projectName: m.project.name, role: m.role }));
+            await this.prisma.projectMember.findMany({ where: { userId, leftAt: null, project: { deletedAt: null } }, include: { project: true, roleDefinition: true }, orderBy: { project: { key: 'asc' } } })
+          ).map((m) => ({ projectId: m.projectId, projectKey: m.project.key, projectName: m.project.name, role: m.role, roleId: m.roleId, roleName: m.roleDefinition?.name ?? m.role,
+            permissions: m.roleId ? normalizePermissions(m.roleDefinition?.permissions ?? []) : builtins[m.role as ProjectRole] ?? [] }));
     return { user: publicUser(user), projects };
   }
 

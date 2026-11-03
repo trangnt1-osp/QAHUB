@@ -60,7 +60,7 @@ test('user project history and project member lists are numbered across pages', 
   await page.keyboard.press('Escape');
   await page.route('**/api/v1/projects/ELMS/members*', (route) => route.fulfill({ json: users.map((user, i) => ({ id: i + 1, userId: user.id, role: 'viewer', user, joinedAt: '2026-01-01', leftAt: null })) }));
   await page.goto('/projects/ELMS/info');
-  const table = page.getByTestId('list-table');
+  const table = page.locator('.ant-card').filter({ hasText: 'Thành viên dự án' }).getByTestId('list-table');
   await table.getByTitle('2', { exact: true }).click();
   await expect(table.getByRole('row').nth(1).getByRole('cell').first()).toHaveText('11');
 });
