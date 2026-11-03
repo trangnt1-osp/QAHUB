@@ -1,5 +1,5 @@
 import { PlusOutlined, SettingOutlined } from '@ant-design/icons';
-import { App, Button, Card, Checkbox, Dropdown, Form, Input, Modal, Popconfirm, Progress, Select, Space, Tag, Tree, Typography } from 'antd';
+import { App, Button, Card, Checkbox, Dropdown, Form, Input, Modal, Popconfirm, Progress, Select, Space, Splitter, Tag, Tree, Typography } from 'antd';
 import type { DataNode } from 'antd/es/tree';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useMemo, useRef, useState } from 'react';
@@ -17,6 +17,14 @@ import { TestCaseDrawer } from './TestCaseDrawer';
 import { STATUS_HEX, STATUS_LABEL } from './labels';
 
 const ALL_COLS = [['priority', 'Priority'], ['category', 'Category'], ['preconditions', 'Pre-conditions'], ['stepCount', 'Số bước'], ['status', 'Status'], ['bugs', 'Link Bug'], ['notes', 'Notes'], ['updatedAt', 'Cập nhật']] as const;
+const TREE_WIDTH_KEY = 'tc-tree-width-percent';
+
+function savedTreeWidth() {
+  try {
+    const width = Number(localStorage.getItem(TREE_WIDTH_KEY) ?? 25);
+    return width === 0 || (Number.isFinite(width) && width >= 15 && width <= 50) ? width : 25;
+  } catch { return 25; }
+}
 
 export default function TestCasesPage() {
   const { projectKey = '' } = useParams();
@@ -34,6 +42,7 @@ export default function TestCasesPage() {
   const [categoryId, setCategoryId] = useState<string[]>([]);
   const [priority, setPriority] = useState<string[]>([]);
   const [treeQ, setTreeQ] = useState('');
+  const [initialTreeWidth] = useState(savedTreeWidth);
   const [reload, setReload] = useState(0);
   const [openId, setOpenId] = useState<number | null>(null);
   const [selected, setSelected] = useState<number[]>([]);
@@ -90,7 +99,15 @@ export default function TestCasesPage() {
   const fnOptions = (tree.data?.epics ?? []).flatMap((e: any) => e.functions).concat(tree.data?.unassigned ?? []);
 
   return (
-    <div className="page" style={{ display: 'grid', gridTemplateColumns: '300px minmax(0,1fr)', gap: 16 }}>
+    <div className="page">
+      <Splitter style={{ height: 'auto' }} onResizeEnd={(sizes) => {
+        const total = sizes.reduce((sum, size) => sum + size, 0);
+        if (total > 0) {
+          const percent = sizes[0] === 0 ? 0 : Math.max(15, Math.min(50, sizes[0] / total * 100));
+          try { localStorage.setItem(TREE_WIDTH_KEY, String(percent)); } catch { /* Layout still works when storage is unavailable. */ }
+        }
+      }}>
+      <Splitter.Panel defaultSize={`${initialTreeWidth}%`} min="15%" max="50%" collapsible style={{ paddingRight: 8, overflow: 'hidden' }}>
       <Card size="small" styles={{ body: { padding: 8 } }} style={{ alignSelf: 'start' }} title="Epic / Function"
         extra={canEdit && <Dropdown menu={{ items: [{ key: 'epic', label: 'Thêm epic', onClick: () => setReqOpen('epic') }, { key: 'fn', label: 'Thêm function', onClick: () => setReqOpen('function') }] }}><Button size="small" icon={<PlusOutlined />} /></Dropdown>}>
         <Input.Search size="small" allowClear placeholder="Tìm mã/tên function" style={{ marginBottom: 8 }} onChange={(e) => setTreeQ(e.target.value)} />
@@ -98,7 +115,9 @@ export default function TestCasesPage() {
           onSelect={(keys) => keys[0] && onSelectNode(String(keys[0]))} />
         {tree.isLoading && <div className="muted">Đang tải…</div>}
       </Card>
+      </Splitter.Panel>
 
+      <Splitter.Panel min="50%" style={{ paddingLeft: 8, overflow: 'hidden' }}>
       <div style={{ minWidth: 0 }}>
         <Card size="small" style={{ marginBottom: 12 }}>
           {selectedFn ? (
@@ -152,6 +171,8 @@ export default function TestCasesPage() {
             onOpen={setOpenId} onSelection={(ids) => { setSelected(ids); setAllIds(null); }} me={me} />
         )}
       </div>
+      </Splitter.Panel>
+      </Splitter>
 
       <TestCaseDrawer projectKey={projectKey} id={openId} onClose={() => setOpenId(null)} onSaved={(row) => { if (row) grid.current?.updateRow(row); else refreshAll(); void qc.invalidateQueries({ queryKey: ['tc-summary'] }); }} />
       <CreateTestCaseModal open={createOpen} projectKey={projectKey} functions={fnOptions} defaultFunctionId={functionId} onClose={() => setCreateOpen(false)} onCreated={(row) => { setCreateOpen(false); refreshAll(); setOpenId(row.id); }} />

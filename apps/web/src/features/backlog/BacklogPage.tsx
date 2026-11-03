@@ -253,12 +253,8 @@ export default function BacklogPage() {
         modal.warning({ title: `Không thể xóa ${label}`, content: `Còn ${current.issueCount} item liên kết, kể cả item đã hoàn thành hoặc đã xóa. Hãy chuyển các item trước khi xóa.`, okText: 'Đã hiểu' });
         return;
       }
-      modal.confirm({ title: `Xóa ${current.name}?`, okText: 'Xóa', cancelText: 'Hủy', okButtonProps: { danger: true },
-        onOk: async () => {
-          try { await deleteSprint(String(current.id)); await qc.invalidateQueries(); message.success(`Đã xóa ${label}`); }
-          catch (e) { message.error(errorMessage(e)); throw e; }
-        },
-      });
+      await deleteSprint(String(current.id));
+      await qc.invalidateQueries();
     } catch (e) { message.error(errorMessage(e)); }
   };
 

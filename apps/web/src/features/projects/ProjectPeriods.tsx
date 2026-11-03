@@ -20,7 +20,7 @@ export function ProjectPeriods({ projectKey, trackingMode = 'sprint' }: { projec
   const canEdit = useCan(projectKey, 'developer');
   const canAdmin = useCan(projectKey, 'admin');
   const qc = useQueryClient();
-  const { message, modal } = App.useApp();
+  const { message } = App.useApp();
   const [changingMode, setChangingMode] = useState(false);
   const [modeError, setModeError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
@@ -61,14 +61,11 @@ export function ProjectPeriods({ projectKey, trackingMode = 'sprint' }: { projec
             <ActionIconButton label={p.state === 'closed' ? `${label} đã hoàn thành` : `Sửa ${label}`} disabled={p.state === 'closed'} icon={<EditOutlined />} onClick={() => setSelected({ action: 'edit', period: p })} />
             {p.state === 'future' && <ActionIconButton label={activeSprint ? 'Đã có sprint đang hoạt động' : `Bắt đầu ${label}`} disabled={!!activeSprint} icon={<PlayCircleOutlined />} onClick={() => setSelected({ action: 'start', period: p })} />}
             {p.state === 'active' && <ActionIconButton label={`Hoàn thành ${label}`} icon={<CheckOutlined />} onClick={() => setSelected({ action: 'complete', period: p })} />}
-            <ActionIconButton label={p.issueCount > 0 ? `Không thể xóa ${label} có item được phân bổ (kể cả item đã xong hoặc đã xóa)` : p.state === 'active' ? `Hoàn thành ${label} trước khi xóa` : `Xóa ${label}`} icon={<DeleteOutlined />} danger disabled={p.issueCount > 0 || p.state === 'active' || deleting !== null} loading={deleting === p.id} onClick={() => modal.confirm({
-              title: `Xóa ${p.name}?`, content: `Bạn có chắc muốn xóa ${label} này?`, okText: 'Xóa', cancelText: 'Hủy', okButtonProps: { danger: true },
-              onOk: async () => {
+            <ActionIconButton label={p.issueCount > 0 ? `Không thể xóa ${label} có item được phân bổ (kể cả item đã xong hoặc đã xóa)` : p.state === 'active' ? `Hoàn thành ${label} trước khi xóa` : `Xóa ${label}`} icon={<DeleteOutlined />} danger disabled={p.issueCount > 0 || p.state === 'active' || deleting !== null} loading={deleting === p.id} onClick={async () => {
                 setDeleting(p.id);
-                try { await deleteSprint(String(p.id)); await qc.invalidateQueries(); message.success(`Đã xóa ${label}`); }
-                catch (e) { message.error(errorMessage(e)); throw e; } finally { setDeleting(null); }
-              },
-            })} />
+                try { await deleteSprint(String(p.id)); await qc.invalidateQueries(); }
+                catch (e) { message.error(errorMessage(e)); } finally { setDeleting(null); }
+            }} />
           </Space> }] : []),
         ]} />
       </QueryBoundary>
