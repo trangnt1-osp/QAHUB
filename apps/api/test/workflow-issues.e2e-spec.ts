@@ -97,7 +97,9 @@ describe('Projects, workflow, issues', () => {
     expect(backlog.sprints[0].issues.map((i: any) => i.key)).toContain(a);
     const summary = (await ctx.http().get(api('/projects/ELMS/summary')).set(auth(tokens.viewer)).expect(200)).body;
     expect(summary.statusOverview.total).toBeGreaterThan(0);
-    expect(summary.bySource.auto).toBe(3);
+    expect(summary.bySource.auto).toBe(1);
+    const allBugSummary = (await ctx.http().get(api('/projects/ELMS/summary?scope=all')).set(auth(tokens.viewer)).expect(200)).body;
+    expect(allBugSummary.bySource.auto).toBe(3);
     const dash = (await ctx.http().get(api('/dashboard')).set(auth(tokens.tester)).expect(200)).body;
     expect(dash.canTriage).toBe(true);
 
