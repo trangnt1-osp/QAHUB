@@ -6,6 +6,7 @@ import { QueryBoundary } from '../../components/EmptyState';
 import { UserAvatar } from '../../components/UserAvatar';
 import { fmtDate } from '../../lib/date';
 import { ProjectMembers } from './ProjectMembers';
+import { ProjectPeriods } from './ProjectPeriods';
 
 export default function ProjectInfoPage() {
   const { projectKey = '' } = useParams();
@@ -23,6 +24,7 @@ export default function ProjectInfoPage() {
             { key: 'description', label: 'Mô tả', children: project.description || '—', span: 2 },
           ]} />
         </Card>
+        <ProjectPeriods projectKey={projectKey} trackingMode={project.trackingMode} />
         <ProjectMembers projectKey={projectKey} canManage={project.myRole === 'admin'} />
       </Space>}
     </QueryBoundary>

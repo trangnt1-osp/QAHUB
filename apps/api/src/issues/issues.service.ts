@@ -110,9 +110,12 @@ export class IssuesService {
 
   private async validateSprint(tx: Tx, projectId: bigint, sprintId: bigint | null | undefined) {
     if (!sprintId) return;
+    await tx.$queryRaw`SELECT id FROM projects WHERE id = ${projectId} FOR UPDATE`;
     const sp = await tx.sprint.findFirst({ where: { id: sprintId, projectId, deletedAt: null } });
-    if (!sp) throw notFound(ERROR_CODES.SPRINT_NOT_FOUND, 'Không tìm thấy sprint');
-    if (sp.state === 'closed') throw unprocessable(ERROR_CODES.VALIDATION_ERROR, 'Sprint đã đóng');
+    if (!sp) throw notFound(ERROR_CODES.SPRINT_NOT_FOUND, 'Không tìm thấy sprint/phase');
+    const project = await tx.project.findUniqueOrThrow({ where: { id: projectId } });
+    if (sp.kind !== project.trackingMode) throw unprocessable(ERROR_CODES.VALIDATION_ERROR, 'Sprint/phase không thuộc cách theo dõi hiện tại');
+    if (sp.state === 'closed') throw unprocessable(ERROR_CODES.VALIDATION_ERROR, 'Sprint/phase đã hoàn thành');
   }
 
   private async validateUser(tx: Tx, projectId: bigint, userId: bigint | null | undefined) {

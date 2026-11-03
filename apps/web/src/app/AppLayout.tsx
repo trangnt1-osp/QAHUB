@@ -6,6 +6,7 @@ import { Button, Dropdown, Input, Layout, Menu, Typography } from 'antd';
 import { useEffect, useMemo, useState } from 'react';
 import { Outlet, useLocation, useMatches, useNavigate } from 'react-router-dom';
 import { AUTH_EXPIRED_EVENT } from '../api/http';
+import { useProjectTracking } from '../api/hooks';
 import { useAuth } from '../features/auth/authStore';
 import { CreateIssueModal } from '../features/issues/CreateIssueModal';
 import { useCreateIssueModal } from '../features/issues/createIssueStore';
@@ -24,6 +25,8 @@ export function AppLayout() {
   const matches = useMatches();
   const screenTitle = matches.reduce((title, match) => (match.handle as { title?: string } | undefined)?.title ?? title, 'OSP QA HUB');
   const projectKey = loc.pathname.startsWith('/projects/') ? matches.find((match) => match.params.projectKey)?.params.projectKey : undefined;
+  const phase = useProjectTracking(projectKey) === 'phase';
+  const displayTitle = phase && screenTitle === 'Active sprint' ? 'Active phase' : screenTitle;
   const show = useCreateIssueModal((s) => s.show);
   const [pwOpen, setPwOpen] = useState(false);
   const quickSearch = useQuickSearch();
@@ -77,7 +80,7 @@ export function AppLayout() {
           <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 12 }}>
             <Button type="text" style={{ flexShrink: 0 }} icon={sidebarCollapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />} onClick={toggleSidebar} aria-label="Thu gọn menu" />
             {projectKey && <Button aria-label="Danh sách dự án" icon={<ArrowLeftOutlined />} onClick={() => nav('/projects')} style={{ flexShrink: 0 }}>Danh sách dự án</Button>}
-            <Typography.Text strong ellipsis data-testid="screen-title" style={{ minWidth: 0, fontSize: 18 }}>{projectKey ? `${projectKey} / ${screenTitle}` : screenTitle}</Typography.Text>
+            <Typography.Text strong ellipsis data-testid="screen-title" style={{ minWidth: 0, fontSize: 18 }}>{projectKey ? `${projectKey} / ${displayTitle}` : displayTitle}</Typography.Text>
           </div>
           <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 12 }}>
             <Input.Search placeholder="Tìm nhanh theo mã item (ELMS-2249)" allowClear style={{ width: 'clamp(100px, 25vw, 360px)' }}

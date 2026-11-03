@@ -17,7 +17,9 @@ scripts/simulate-ingest.ts  giả lập repo Playwright gửi một lần chạy
 docker/ docker-compose.yml  nginx, api, worker, postgres, minio
 ```
 
-Menu chính: Dashboard · Dự án (Summary / Backlog / Active sprint / Test cases) · Member · Report · API Keys · Cấu hình.
+Menu chính: Dashboard · Dự án (Thông tin dự án / Summary / Backlog / Active sprint hoặc Active phase / Test cases) · Member · Report · API Keys · Cấu hình.
+
+Trong **Thông tin dự án → Quản lý Sprint / Phase**, quản trị viên chọn cách theo dõi của dự án. Developer trở lên có thể tạo, sửa, bắt đầu và hoàn thành Sprint/Phase tại đây hoặc tạo nhanh trong Backlog; các màn dùng chung dữ liệu. Sprint chỉ có một phiên đang chạy; Phase cho phép chạy song song và chọn giai đoạn cần xem trên Active. Phase chỉ hoàn thành khi các item hiện có đã xong. Không được xóa Sprint/Phase còn item liên kết (kể cả đã hoàn thành hoặc xóa mềm), hoặc đổi cách theo dõi khi còn phân bổ/đang chạy. Dự án hiện có mặc định theo Sprint.
 
 File đính kèm (ảnh/video/log) mặc định lưu **trên đĩa máy chủ API** (`STORAGE_DRIVER=local`), không cần MinIO/S3.
 Có thể đổi sang MinIO/S3 bằng `STORAGE_DRIVER=s3`. Xem mục [Lưu trữ file đính kèm](#lưu-trữ-file-đính-kèm).

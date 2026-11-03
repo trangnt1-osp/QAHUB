@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, HttpCode, Param, Patch, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { parseId } from '../common/bigint';
 import { AuthUser, CurrentProject, CurrentUser, ProjectContext, ProjectRole } from '../common/decorators';
@@ -9,6 +9,11 @@ import { SprintsService } from './sprints.service';
 @Controller()
 export class SprintsController {
   constructor(private readonly sprints: SprintsService) {}
+
+  @ProjectRole('viewer') @Get('projects/:projectKey/sprints')
+  listSprints(@CurrentProject() p: ProjectContext) {
+    return this.sprints.list(p.id);
+  }
 
   @ProjectRole('developer') @Post('projects/:projectKey/sprints')
   createSprint(@CurrentProject() p: ProjectContext, @Body() dto: CreateSprintDto, @CurrentUser() u: AuthUser) {

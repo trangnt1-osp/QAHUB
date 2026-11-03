@@ -1,7 +1,8 @@
 import { DEFAULT_TEST_CATEGORIES, PROJECT_KEY_REGEX, PROJECT_ROLES, ProjectRole } from '@ospm/shared';
-import { IsBoolean, IsDateString, IsIn, IsInt, IsOptional, IsString, Matches, MinLength } from 'class-validator';
+import { IsBoolean, IsDateString, IsIn, IsInt, IsOptional, IsString, Matches, MinLength, ValidateIf } from 'class-validator';
 
 export class CreateProjectDto {
+  @ValidateIf((_object, value) => value !== undefined) @IsIn(['sprint', 'phase']) trackingMode?: 'sprint' | 'phase';
   @IsString() @Matches(PROJECT_KEY_REGEX, { message: 'key phải gồm 2–10 ký tự A–Z, 0–9 và bắt đầu bằng chữ' }) key: string;
   @IsString() @MinLength(1) name: string;
   @IsOptional() @IsString() description?: string;
@@ -12,6 +13,7 @@ export class CreateProjectDto {
 }
 
 export class UpdateProjectDto {
+  @ValidateIf((_object, value) => value !== undefined) @IsIn(['sprint', 'phase']) trackingMode?: 'sprint' | 'phase';
   @IsOptional() @IsString() @MinLength(1) name?: string;
   @IsOptional() @IsString() description?: string;
   @IsOptional() @IsInt() leadId?: number | null;

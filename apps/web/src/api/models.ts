@@ -27,7 +27,7 @@ export interface IssueDetail extends IssueRow {
   };
 }
 
-export interface Sprint { id: number; name: string; goal: string | null; state: 'future' | 'active' | 'closed'; startDate: string | null; endDate: string | null }
+export interface Sprint { id: number; name: string; kind?: 'sprint' | 'phase'; goal: string | null; state: 'future' | 'active' | 'closed'; startDate: string | null; endDate: string | null; issueCount?: number; doneCount?: number; openCount?: number }
 export interface Page<T> { items: T[]; nextCursor: string | null }
 
 export interface ProjectRow {

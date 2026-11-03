@@ -34,7 +34,7 @@ export function ProjectLayout() {
   const { projectKey } = useParams();
   const nav = useNavigate();
   const loc = useLocation();
-  const { error, refetch } = useQuery({ queryKey: ['project', projectKey], queryFn: () => getProject(projectKey!), enabled: !!projectKey });
+  const { data: project, error, refetch } = useQuery({ queryKey: ['project', projectKey], queryFn: () => getProject(projectKey!), enabled: !!projectKey });
   const active = projectTabs.find((t) => loc.pathname.includes(`/${t.path}`))?.key ?? 'summary';
   if (error) {
     if (isAxiosError(error) && error.response?.status === 404 && new URLSearchParams(loc.search).has('q')) return <EmptyState title="Không có item phù hợp." />;
@@ -44,7 +44,7 @@ export function ProjectLayout() {
     <div>
       <div style={{ background: '#fff', padding: '12px 24px 0', borderBottom: '1px solid #f0f0f0' }}>
         <Tabs activeKey={active} onChange={(k) => nav({ pathname: `/projects/${projectKey}/${k}`, search: k === active ? loc.search : '' })}
-          items={projectTabs.map((t) => ({ key: t.path, label: <span><t.icon /> {t.label}</span> }))} />
+          items={projectTabs.map((t) => ({ key: t.path, label: <span><t.icon /> {t.path === 'board' && project?.trackingMode === 'phase' ? 'Active phase' : t.label}</span> }))} />
       </div>
       <Suspense fallback={<div className="page muted">Đang tải…</div>}><Outlet /></Suspense>
     </div>

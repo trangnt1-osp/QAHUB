@@ -53,7 +53,7 @@ export function ProjectsPage() {
             { title: 'Lead', dataIndex: 'lead', render: (l) => (l ? <UserAvatar user={l} showName /> : '—') },
             { title: 'Item mở', dataIndex: 'openIssues', align: 'right' },
             { title: 'Bug auto chờ duyệt', dataIndex: 'pendingReview', align: 'right', render: (n) => (n ? <Badge count={n} color="#722ed1" /> : 0) },
-            { title: 'Sprint đang chạy', dataIndex: 'activeSprint', render: (s) => (s ? <Tag color="blue">{s.name}</Tag> : <span className="muted">—</span>) },
+            { title: 'Sprint / Phase đang chạy', dataIndex: 'activeSprint', render: (s) => (s ? <Tag color="blue">{s.name}</Tag> : <span className="muted">—</span>) },
             { title: 'Ngày tạo', dataIndex: 'createdAt', render: fmtDate },
             { title: 'Thao tác', render: (_, project) => project.myRole === 'admin' ? (
               <ActionIconButton label="Sửa" icon={<EditOutlined />} onClick={() => setEditing(project)} />
@@ -79,7 +79,7 @@ function CreateProjectModal({ open, onClose }: { open: boolean; onClose: () => v
       <Form form={form} layout="vertical" onFinish={async (v) => {
         setSaving(true);
         try {
-          await createProject({ key: v.key, name: v.name, description: v.description, leadId: v.leadId, workflowTemplateId: v.workflowTemplateId, ...projectDatePayload(v) });
+          await createProject({ key: v.key, name: v.name, trackingMode: v.trackingMode, description: v.description, leadId: v.leadId, workflowTemplateId: v.workflowTemplateId, ...projectDatePayload(v) });
           message.success('Đã tạo dự án'); await qc.invalidateQueries(); await reload(); onClose(); form.resetFields();
         } catch (e) { message.error(errorMessage(e)); } finally { setSaving(false); }
       }}>
@@ -89,6 +89,7 @@ function CreateProjectModal({ open, onClose }: { open: boolean; onClose: () => v
         <Form.Item name="description" label="Mô tả"><Input.TextArea rows={2} /></Form.Item>
         <Form.Item name="leadId" label="Lead"><Select allowClear showSearch optionFilterProp="label" options={users.filter((u) => u.isActive).map((u) => ({ value: u.id, label: u.displayName }))} /></Form.Item>
         <ProjectDateFields />
+        <Form.Item name="trackingMode" label="Cách theo dõi tiến độ" initialValue="sprint"><Select options={[{ value: 'sprint', label: 'Sprint' }, { value: 'phase', label: 'Phase' }]} /></Form.Item>
         <Form.Item name="workflowTemplateId" label="Workflow template" rules={[{ required: true, message: 'Chọn template' }]}><Select options={templates.map((t) => ({ value: t.id, label: t.name }))} /></Form.Item>
       </Form>
     </Modal>

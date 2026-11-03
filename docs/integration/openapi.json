@@ -1345,6 +1345,27 @@
       }
     },
     "/api/v1/projects/{projectKey}/sprints": {
+      "get": {
+        "operationId": "listSprints",
+        "parameters": [
+          {
+            "name": "projectKey",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "sprints"
+        ]
+      },
       "post": {
         "operationId": "createSprint",
         "parameters": [
@@ -3250,6 +3271,13 @@
       "CreateProjectDto": {
         "type": "object",
         "properties": {
+          "trackingMode": {
+            "type": "string",
+            "enum": [
+              "sprint",
+              "phase"
+            ]
+          },
           "key": {
             "type": "string",
             "pattern": "PROJECT_KEY_REGEX"
@@ -3287,6 +3315,13 @@
       "UpdateProjectDto": {
         "type": "object",
         "properties": {
+          "trackingMode": {
+            "type": "string",
+            "enum": [
+              "sprint",
+              "phase"
+            ]
+          },
           "name": {
             "type": "string",
             "minLength": 1
@@ -3685,10 +3720,22 @@
         "type": "object",
         "properties": {
           "name": {
-            "type": "string"
+            "type": "string",
+            "minLength": 1
           },
           "goal": {
-            "type": "string"
+            "type": "string",
+            "nullable": true
+          },
+          "startDate": {
+            "type": "string",
+            "nullable": true,
+            "pattern": "DATE"
+          },
+          "endDate": {
+            "type": "string",
+            "nullable": true,
+            "pattern": "DATE"
           }
         }
       },

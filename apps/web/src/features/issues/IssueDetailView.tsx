@@ -9,7 +9,7 @@ import {
   addComment, deleteComment, deleteIssue, getIssue, getIssueActivity, listComments, transitionIssue, updateIssue,
 } from '../../api/generated/api';
 import { errorCode, errorMessage } from '../../api/http';
-import { useSprints } from '../../api/hooks';
+import { useProjectTracking, useSprints } from '../../api/hooks';
 import type { IssueDetail } from '../../api/models';
 import { AttachmentList } from '../../components/AttachmentList';
 import { QueryBoundary } from '../../components/EmptyState';
@@ -39,6 +39,7 @@ export function IssueDetailView({ issueKey, onDeleted }: { issueKey: string; onD
   const isAdmin = useCan(projectKey, 'admin');
   const { data: issue, isLoading, error, refetch } = useQuery<IssueDetail>({ queryKey: ['issue', issueKey], queryFn: () => getIssue(issueKey) });
   const { data: sprints = [] } = useSprints(projectKey);
+  const phase = useProjectTracking(projectKey) === 'phase';
   const [busy, setBusy] = useState(false);
   const [comment, setComment] = useState<Record<string, unknown> | null>(null);
   const [descDraft, setDescDraft] = useState<Record<string, unknown> | null>(null);
@@ -151,7 +152,7 @@ export function IssueDetailView({ issueKey, onDeleted }: { issueKey: string; onD
                 <Descriptions.Item label="Priority">
                   {canEdit ? <Select style={{ width: 190 }} value={issue.priority} onChange={(v) => patch({ priority: v }, { priority: v })} options={PRIORITIES.map((p) => ({ value: p, label: <PriorityIcon priority={p} withLabel /> }))} /> : <PriorityIcon priority={issue.priority} withLabel />}
                 </Descriptions.Item>
-                <Descriptions.Item label="Sprint">
+                <Descriptions.Item label={phase ? 'Phase' : 'Sprint'}>
                   <Select allowClear disabled={!canEdit || issue.status.category === 'triage'} style={{ width: 190 }} placeholder={issue.status.category === 'triage' ? 'Cần duyệt trước' : 'Backlog'} value={issue.sprintId ?? undefined}
                     onChange={(v) => patch({ sprintId: v ?? null })} options={sprints.map((s) => ({ value: s.id, label: s.name }))} />
                 </Descriptions.Item>

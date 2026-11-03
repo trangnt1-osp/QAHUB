@@ -1,0 +1,56 @@
+import { expect, test } from '@playwright/test';
+import { login } from './helpers';
+
+test('project information, quick creation, backlog and active phases share the same periods', async ({ page }) => {
+  await login(page, 'admin@local.test', 'Admin@12345');
+  const loginResponse = await page.request.post('/api/v1/auth/login', { data: { email: 'admin@local.test', password: 'Admin@12345' } });
+  const headers = { Authorization: `Bearer ${(await loginResponse.json()).accessToken}` };
+  const templates = await (await page.request.get('/api/v1/workflow-templates', { headers })).json();
+  const createdProject = await page.request.post('/api/v1/projects', { headers, data: { key: 'PHASES', name: 'Phase tracking project', trackingMode: 'phase', workflowTemplateId: templates.find((t: { name: string }) => t.name === 'Tối giản').id } });
+  expect(createdProject.ok()).toBeTruthy();
+  await page.goto('/projects/PHASES/info');
+  const management = page.locator('.ant-card').filter({ hasText: 'Quản lý Sprint / Phase' });
+  await management.getByRole('button', { name: /Tạo phase/ }).click();
+  const createDialog = page.getByRole('dialog', { name: 'Tạo phase', exact: true });
+  await createDialog.getByLabel('Tên', { exact: true }).fill('Khảo sát');
+  await createDialog.getByLabel('Mục tiêu', { exact: true }).fill('Thu thập yêu cầu');
+  await createDialog.getByRole('button', { name: 'Tạo', exact: true }).click();
+  await expect(management.getByRole('row').filter({ hasText: 'Khảo sát' })).toBeVisible();
+  await page.getByRole('tab', { name: /Backlog/ }).click();
+  await expect(page.getByTestId('backlog-scroll').getByText('Khảo sát', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'plus Tạo phase', exact: true }).click();
+  await expect(page.getByText('Đã tạo phase', { exact: true })).toBeVisible();
+  await page.getByRole('tab', { name: /Thông tin dự án/ }).click();
+  const secondRow = management.getByRole('row').filter({ hasText: 'PHASES Phase 2' });
+  await expect(secondRow).toBeVisible();
+  await secondRow.getByRole('button', { name: 'Sửa phase', exact: true }).click();
+  const edit = page.getByRole('dialog', { name: 'Sửa phase', exact: true });
+  await edit.getByLabel('Tên', { exact: true }).fill('Phát triển');
+  await edit.getByRole('button', { name: 'Lưu', exact: true }).click();
+  for (const name of ['Khảo sát', 'Phát triển']) {
+    await management.getByRole('row').filter({ hasText: name }).getByRole('button', { name: 'Bắt đầu phase', exact: true }).click();
+    await page.getByRole('dialog', { name: `Bắt đầu ${name}`, exact: true }).getByRole('button', { name: 'Bắt đầu', exact: true }).click();
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+  }
+  const periods = await (await page.request.get('/api/v1/projects/PHASES/sprints', { headers })).json();
+  const survey = periods.find((p: { name: string }) => p.name === 'Khảo sát');
+  const createdIssue = await page.request.post('/api/v1/projects/PHASES/issues', { headers, data: { type: 'task', title: 'Survey linked task', sprintId: survey.id } });
+  expect(createdIssue.ok()).toBeTruthy();
+  await page.getByRole('tab', { name: /Active phase/ }).click();
+  await expect(page.getByTestId('screen-title')).toHaveText('PHASES / Active phase');
+  await expect(page.getByText('Survey linked task', { exact: true })).toBeVisible();
+  await page.getByRole('combobox', { name: 'Phase đang thực hiện', exact: true }).press('ArrowDown');
+  await page.locator('.ant-select-dropdown:visible').getByText('Phát triển', { exact: true }).click();
+  await expect(page.getByText('Survey linked task', { exact: true })).toHaveCount(0);
+  await page.getByRole('tab', { name: /Thông tin dự án/ }).click();
+  const surveyRow = management.getByRole('row').filter({ hasText: 'Khảo sát' });
+  await expect(surveyRow.getByRole('button', { name: /Không thể xóa phase/ })).toBeDisabled();
+  await surveyRow.getByRole('button', { name: 'Hoàn thành phase', exact: true }).click();
+  await expect(page.getByRole('dialog').getByRole('button', { name: 'Hoàn thành phase', exact: true })).toBeDisabled();
+  await page.getByRole('dialog').getByRole('button', { name: 'Hủy', exact: true }).click();
+  const mode = management.getByRole('combobox', { name: 'Chế độ theo dõi', exact: true });
+  await mode.press('ArrowDown');
+  await mode.press('ArrowUp');
+  await mode.press('Enter');
+  await expect(management.getByRole('alert')).toContainText('Không thể đổi cách theo dõi');
+});

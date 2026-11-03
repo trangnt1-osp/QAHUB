@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { errorMessage } from '../../api/http';
 import { useAuth } from './authStore';
-import owlies from '../../assets/svg/owlies.svg';
+import loginPenguin from '../../assets/images/login-penguin.png';
 
 export default function LoginPage() {
   const { user, login } = useAuth();
@@ -14,11 +14,11 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   if (user) return <Navigate to={loc.state?.from ?? '/dashboard'} replace />;
   return (
-    <div style={{ minHeight: '100dvh', display: 'grid', placeItems: 'center', background: 'linear-gradient(135deg,#ffe4ec,#fff0f5)' }}>
-      <div style={{ width: 380, position: 'relative' }}>
-      {/* Đàn cú đứng sát mép trên form; đáy ảnh chạm mép trên Card */}
-      <img src={owlies} alt="" aria-hidden style={{ position: 'absolute', left: 0, right: 0, bottom: '100%', width: '72%', margin: '0 auto', display: 'block', pointerEvents: 'none' }} />
-      <Card style={{ width: 380 }}>
+    <div style={{ minHeight: '100dvh', display: 'grid', placeItems: 'center', padding: '24px 16px', boxSizing: 'border-box', background: 'linear-gradient(135deg,#ffe4ec,#fff0f5)' }}>
+      <div style={{ width: 'min(380px, 100%)' }}>
+      {/* Minh họa nền trong suốt nằm trên form, giữ trong luồng để không bị cắt. */}
+      <img src={loginPenguin} alt="" aria-hidden style={{ width: '72%', maxWidth: 270, height: 'auto', margin: '0 auto 8px', display: 'block', pointerEvents: 'none' }} />
+      <Card style={{ width: '100%' }}>
         <Typography.Title level={3} style={{ textAlign: 'center', marginTop: 0 }}>OSP QA HUB</Typography.Title>
         <Typography.Paragraph type="secondary" style={{ textAlign: 'center' }}>Quản lý dự án & bug tự động</Typography.Paragraph>
         {error && <Alert type="error" message={error} showIcon style={{ marginBottom: 16 }} />}

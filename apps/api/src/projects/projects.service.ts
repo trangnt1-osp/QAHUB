@@ -41,7 +41,7 @@ export class ProjectsService {
     const pendBy = new Map(pending.map((r) => [r.project_id, Number(r.n)]));
     const sprintBy = new Map(sprints.map((s) => [s.projectId, s]));
     return projects.map((p) => ({
-      id: p.id, key: p.key, name: p.name, description: p.description, lead: p.lead, startDate: p.startDate, endDate: p.endDate, createdAt: p.createdAt,
+      id: p.id, key: p.key, name: p.name, trackingMode: p.trackingMode, description: p.description, lead: p.lead, startDate: p.startDate, endDate: p.endDate, createdAt: p.createdAt,
       myRole: user.systemRole === 'admin' ? 'admin' : p.members[0]?.role ?? null,
       openIssues: openBy.get(p.id) ?? 0,
       pendingReview: pendBy.get(p.id) ?? 0,
@@ -61,7 +61,7 @@ export class ProjectsService {
     }
     return this.prisma.$transaction(async (tx) => {
       const project = await tx.project.create({
-        data: { key: dto.key, name: dto.name, description: dto.description, leadId: dto.leadId ? BigInt(dto.leadId) : null, startDate: projectDate(dto.startDate), endDate: projectDate(dto.endDate), settings: { createBugForFlaky: false } },
+        data: { key: dto.key, name: dto.name, trackingMode: dto.trackingMode, description: dto.description, leadId: dto.leadId ? BigInt(dto.leadId) : null, startDate: projectDate(dto.startDate), endDate: projectDate(dto.endDate), settings: { createBugForFlaky: false } },
       });
       await applyTemplateDefinition(tx, project.id, tpl.definition as unknown as WorkflowTemplateDefinition);
       for (const name of SYSTEM_LABELS) {
@@ -78,7 +78,7 @@ export class ProjectsService {
 
   async get(projectId: bigint, role: string) {
     const p = await this.prisma.project.findUniqueOrThrow({ where: { id: projectId }, include: { lead: { select: { id: true, displayName: true, avatarUrl: true } } } });
-    return { id: p.id, key: p.key, name: p.name, description: p.description, lead: p.lead, startDate: p.startDate, endDate: p.endDate, settings: p.settings, createdAt: p.createdAt, myRole: role };
+    return { id: p.id, key: p.key, name: p.name, trackingMode: p.trackingMode, description: p.description, lead: p.lead, startDate: p.startDate, endDate: p.endDate, settings: p.settings, createdAt: p.createdAt, myRole: role };
   }
 
   async update(projectId: bigint, dto: UpdateProjectDto, actorId: bigint) {
@@ -89,12 +89,17 @@ export class ProjectsService {
       // Serialize edits so partial date updates validate against the latest saved counterpart.
       await tx.$queryRaw`SELECT id FROM projects WHERE id = ${projectId} FOR UPDATE`;
       const existing = await tx.project.findUniqueOrThrow({ where: { id: projectId } });
+      if (dto.trackingMode && dto.trackingMode !== existing.trackingMode) {
+        const assigned = await tx.issue.count({ where: { projectId, sprintId: { not: null } } });
+        const active = await tx.sprint.count({ where: { projectId, deletedAt: null, state: 'active' } });
+        if (assigned || active) throw new AppException(409, ERROR_CODES.VALIDATION_ERROR, 'Không thể đổi cách theo dõi khi còn item được phân bổ hoặc sprint/phase đang thực hiện');
+      }
       const startDate = dto.startDate === undefined ? existing.startDate : projectDate(dto.startDate);
       const endDate = dto.endDate === undefined ? existing.endDate : projectDate(dto.endDate);
       validateProjectDates(startDate, endDate);
       const p = await tx.project.update({
         where: { id: projectId },
-        data: { name: dto.name, description: dto.description, leadId: dto.leadId === undefined ? undefined : dto.leadId === null ? null : BigInt(dto.leadId), startDate, endDate },
+        data: { name: dto.name, trackingMode: dto.trackingMode, description: dto.description, leadId: dto.leadId === undefined ? undefined : dto.leadId === null ? null : BigInt(dto.leadId), startDate, endDate },
       });
       await this.activity.log({ projectId, entity: 'project', entityId: p.key, action: 'updated', actorId, changes: dto as any }, tx);
       return p;

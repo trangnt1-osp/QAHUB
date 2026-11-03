@@ -5,10 +5,10 @@ import { CSS } from '@dnd-kit/utilities';
 import { App, Button, Dropdown, Input, Result, Select, Space, Tag } from 'antd';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { getBoard, rankIssue, transitionIssue } from '../../api/generated/api';
 import { errorMessage } from '../../api/http';
-import { useMembers, useSprints } from '../../api/hooks';
+import { useMembers, useProjectTracking, useSprints } from '../../api/hooks';
 import type { IssueRow, Sprint } from '../../api/models';
 import { AvatarFilter } from '../../components/AvatarFilter';
 import { ErrorState } from '../../components/EmptyState';
@@ -24,13 +24,15 @@ import { useUi } from '../../stores/ui';
 
 interface Column { id: number; name: string; color: string; count?: number }
 interface Lane { id: string; label: string; count: number; cells: Record<string, IssueRow[]> }
-interface BoardData { sprint: Sprint | null; columns: Column[]; lanes: Lane[]; transitionMap: Record<string, string[]> }
+interface BoardData { sprint: Sprint | null; activePeriods?: Sprint[]; columns: Column[]; lanes: Lane[]; transitionMap: Record<string, string[]> }
 
 const EMPTY: number[] = [];
 
 /** Active sprint: cột sinh tự động từ workflow, không bao giờ có Pending Review (mục 6, 10). */
 export default function BoardPage() {
   const { projectKey = '' } = useParams();
+  const phase = useProjectTracking(projectKey) === 'phase';
+  const [searchParams, setSearchParams] = useSearchParams();
   const nav = useNavigate();
   const qc = useQueryClient();
   const { message } = App.useApp();
@@ -41,14 +43,14 @@ export default function BoardPage() {
   const setAssignees = useUi((s) => s.setAssigneeFilter);
   const [q, setQ] = useState('');
   const [groupBy, setGroupBy] = useState<'none' | 'assignee' | 'parent'>('none');
-  const params = { groupBy, q: q || undefined, assigneeIds: assignees.join(',') || undefined };
+  const params = { groupBy, q: q || undefined, assigneeIds: assignees.join(',') || undefined, sprintId: searchParams.get('sprintId') || undefined };
   const { data, isLoading, error, refetch } = useQuery<BoardData>({ queryKey: ['board', projectKey, params], queryFn: () => getBoard(projectKey, params as any) });
   const [board, setBoard] = useState<BoardData | null>(null);
   const [dragFrom, setDragFrom] = useState<{ issue: IssueRow; statusId: number } | null>(null);
   const [collapsedLanes, setCollapsedLanes] = useState<Set<string>>(new Set());
   const [completeOpen, setCompleteOpen] = useState(false);
   const { data: allSprints = [] } = useSprints(projectKey);
-  useEffect(() => { if (data) setBoard(data); }, [data]);
+  useEffect(() => { setBoard(data ?? null); }, [data]);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
 
@@ -90,7 +92,7 @@ export default function BoardPage() {
           return { ...lane, cells };
         }),
       });
-      try { await transitionIssue(key, { toStatusId: toStatus }); void qc.invalidateQueries({ queryKey: ['board', projectKey] }); }
+      try { await transitionIssue(key, { toStatusId: toStatus }); void qc.invalidateQueries(); }
       catch (err) { setBoard(prev); message.error(errorMessage(err)); void refetch(); }
       return;
     }
@@ -118,13 +120,13 @@ export default function BoardPage() {
         <AvatarFilter users={members.map((m) => m.user)} value={assignees} onChange={(ids) => setAssignees(projectKey, ids)} />
         <Select value={groupBy} onChange={setGroupBy} style={{ width: 170 }} options={[{ value: 'none', label: 'Group: None' }, { value: 'assignee', label: 'Group: Assignee' }, { value: 'parent', label: 'Group: Sub-task' }]} />
         <div style={{ flex: 1 }} />
-        {sprint && <span className="muted">{sprint.name}</span>}
-        {sprint && canEdit && <Button type="primary" onClick={() => setCompleteOpen(true)}>Complete sprint</Button>}
+        {phase && !!board?.activePeriods?.length ? <Select aria-label="Phase đang thực hiện" style={{ minWidth: 200 }} value={sprint?.id} options={board.activePeriods.map((period) => ({ value: period.id, label: period.name }))} onChange={(id) => setSearchParams((prev) => { const next = new URLSearchParams(prev); next.set('sprintId', String(id)); return next; })} /> : sprint && <span className="muted">{sprint.name}</span>}
+        {sprint && canEdit && <Button type="primary" onClick={() => setCompleteOpen(true)}>{phase ? 'Hoàn thành phase' : 'Complete sprint'}</Button>}
         {sprint && <Dropdown menu={{ items: [{ key: 'b', label: 'Mở Backlog', onClick: () => nav(`/projects/${projectKey}/backlog`) }] }}><Button icon={<EllipsisOutlined />} /></Dropdown>}
       </Space>
 
       {isLoading && !board ? <div className="muted">Đang tải…</div> : !sprint ? (
-        <Result title="Chưa có sprint đang chạy" subTitle="Hãy bắt đầu một sprint trong Backlog để thấy board." extra={<Button type="primary" onClick={() => nav(`/projects/${projectKey}/backlog`)}>Đi tới Backlog</Button>} />
+        <Result title={phase ? 'Chưa có phase đang thực hiện' : 'Chưa có sprint đang chạy'} subTitle={phase ? 'Hãy bắt đầu một phase trong Backlog hoặc Thông tin dự án.' : 'Hãy bắt đầu một sprint trong Backlog để thấy board.'} extra={<Button type="primary" onClick={() => nav(`/projects/${projectKey}/backlog`)}>Đi tới Backlog</Button>} />
       ) : (
         <DndContext sensors={sensors} collisionDetection={closestCorners}
           onDragStart={(e: DragStartEvent) => { const f = findCard(String(e.active.id)); if (f) setDragFrom({ issue: f.issue, statusId: f.statusId }); }}
@@ -157,8 +159,8 @@ export default function BoardPage() {
         </DndContext>
       )}
       <CompleteSprintModal sprint={sprint ?? null} open={completeOpen} onClose={() => setCompleteOpen(false)}
-        done={(board?.lanes ?? []).reduce((a, l) => a + Object.values(l.cells).flat().filter((i) => i.status.category === 'done').length, 0)}
-        notDone={(board?.lanes ?? []).reduce((a, l) => a + Object.values(l.cells).flat().filter((i) => i.status.category !== 'done').length, 0)}
+        done={allSprints.find((period) => period.id === sprint?.id)?.doneCount ?? (board?.lanes ?? []).reduce((a, l) => a + Object.values(l.cells).flat().filter((i) => i.status.category === 'done').length, 0)}
+        notDone={allSprints.find((period) => period.id === sprint?.id)?.openCount ?? (board?.lanes ?? []).reduce((a, l) => a + Object.values(l.cells).flat().filter((i) => i.status.category !== 'done').length, 0)}
         futureSprints={allSprints.filter((s) => s.state === 'future')} />
     </div>
   );

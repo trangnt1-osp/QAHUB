@@ -28,14 +28,20 @@ export const useTestCategories = (projectKey?: string) =>
 export const useAttachmentUrl = (id: string, enabled = true) =>
   useQuery<{ url: string; fileName: string; mimeType: string }>({ queryKey: ['attachment-url', id], queryFn: () => getAttachmentUrl(id), enabled, staleTime: 30 * 60_000 });
 
-import { getBacklog } from './generated/api';
+import { getProject } from './generated/api';
+import { http } from './http';
 import type { Sprint } from './models';
 
-/** Sprint đang active + future của dự án (lấy từ endpoint backlog, không cần endpoint riêng). */
+export const useProjectTracking = (projectKey?: string) => {
+  const { data } = useQuery({ queryKey: ['project', projectKey], queryFn: () => getProject(projectKey!), enabled: !!projectKey, staleTime: 30_000 });
+  return data?.trackingMode === 'phase' ? 'phase' : 'sprint';
+};
+
+/** Shared periods; closed records remain in project information for history. */
 export const useSprints = (projectKey?: string) =>
   useQuery<Sprint[]>({
     queryKey: ['sprints', projectKey],
-    queryFn: async () => (await getBacklog(projectKey!, { limit: 1 } as any)).sprints.map((s: { sprint: Sprint }) => s.sprint),
+    queryFn: async () => (await http.get<Sprint[]>(`/api/v1/projects/${projectKey}/sprints`)).data.filter((period) => period.state !== 'closed'),
     enabled: !!projectKey,
     staleTime: 30_000,
   });

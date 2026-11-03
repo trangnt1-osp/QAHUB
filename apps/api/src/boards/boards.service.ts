@@ -27,9 +27,10 @@ export class BoardsService {
   }
 
   async backlog(project: ProjectContext, q: ListIssuesQuery) {
+    const config = await this.prisma.project.findUniqueOrThrow({ where: { id: project.id } });
     const filters = this.issues.filterWhere(project.id, { ...q, sprintId: undefined, cursor: undefined });
     const sprints = await this.prisma.sprint.findMany({
-      where: { projectId: project.id, deletedAt: null, state: { in: ['active', 'future'] } },
+      where: { projectId: project.id, kind: config.trackingMode, deletedAt: null, state: { in: ['active', 'future'] } },
       orderBy: [{ state: 'asc' }, { position: 'asc' }, { id: 'asc' }], // 'active' < 'future'
     });
     const result = [];
@@ -61,14 +62,16 @@ export class BoardsService {
   }
 
   async board(project: ProjectContext, q: BoardQuery) {
-    const sprint = await this.prisma.sprint.findFirst({ where: { projectId: project.id, state: 'active', deletedAt: null } });
+    const config = await this.prisma.project.findUniqueOrThrow({ where: { id: project.id } });
+    const activePeriods = await this.prisma.sprint.findMany({ where: { projectId: project.id, kind: config.trackingMode, state: 'active', deletedAt: null }, orderBy: [{ position: 'asc' }, { id: 'asc' }] });
+    const sprint = activePeriods.find((period) => period.id.toString() === q.sprintId) ?? activePeriods[0];
     const columns = await this.workflows.boardColumns(project.id);
     const statusCols = columns.map((c) => ({ id: c.id, name: c.name, category: c.category, color: c.color, position: c.position }));
     const transitionMap: Record<string, string[]> = {};
     for (const c of columns) {
       transitionMap[c.id.toString()] = (await this.workflows.availableTransitions(project.id, c.id)).map((t) => t.statusId.toString());
     }
-    if (!sprint) return { sprint: null, columns: statusCols, lanes: [], transitionMap };
+    if (!sprint) return { sprint: null, activePeriods, columns: statusCols, lanes: [], transitionMap };
 
     const filters = this.issues.filterWhere(project.id, { ...q, sprintId: undefined, cursor: undefined });
     const rows = await this.prisma.issue.findMany({
@@ -93,7 +96,7 @@ export class BoardsService {
     if (groupBy === 'none' && lanes.size === 0) lanes.set('all', { id: 'all', label: 'All', count: 0, cells: Object.fromEntries(columns.map((c) => [c.id.toString(), []])) });
     const columnCounts = Object.fromEntries(columns.map((c) => [c.id.toString(), dtos.filter((d) => d.statusId === c.id).length]));
     return {
-      sprint, columns: statusCols.map((c) => ({ ...c, count: columnCounts[c.id.toString()] })),
+      sprint, activePeriods, columns: statusCols.map((c) => ({ ...c, count: columnCounts[c.id.toString()] })),
       lanes: [...lanes.values()].sort((a, b) => (a.id === 'none' || a.id === 'unassigned' ? 1 : b.id === 'none' || b.id === 'unassigned' ? -1 : a.label.localeCompare(b.label))),
       transitionMap,
     };

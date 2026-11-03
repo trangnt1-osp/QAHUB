@@ -57,6 +57,7 @@ model Project {
   id          BigInt    @id @default(autoincrement())
   key         String    @unique
   name        String
+  trackingMode String   @default("sprint") @map("tracking_mode")
   description String?
   startDate   DateTime? @map("start_date") @db.Date
   endDate     DateTime? @map("end_date") @db.Date
@@ -171,6 +172,7 @@ model Sprint {
   id          BigInt    @id @default(autoincrement())
   projectId   BigInt    @map("project_id")
   name        String
+  kind        String    @default("sprint")
   goal        String?
   state       String    @default("future")
   startDate   DateTime? @map("start_date") @db.Date
