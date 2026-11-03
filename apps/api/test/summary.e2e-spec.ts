@@ -33,15 +33,18 @@ describe('Project Bug summary', () => {
     await ctx.prisma.issueFunction.create({ data: { issueId: highest.id, functionId: fn.id } });
 
     const summary = (await ctx.http().get(api('/projects/ELMS/summary')).set(auth(t.developer)).expect(200)).body;
-    expect(summary.scope).toBe('open');
-    expect(new Date(summary.createdLast7dFrom).toString()).not.toBe('Invalid Date');
-    expect(summary.cards).toEqual({ total: 3, highest: 1, unassigned: 2, createdLast7d: 2 });
-    expect(summary.statusOverview.total).toBe(3);
-    expect(summary.byModule).toEqual(expect.arrayContaining([{ id: Number(module.id), label: 'PAY · Payments', count: 2 }, { id: null, label: 'Chưa gắn Module', count: 1 }]));
-    expect(summary.byEpic).toEqual(expect.arrayContaining([{ id: Number(epicIssue.id), label: 'ELMS-1 · Payment Epic', count: 1 }, { id: null, label: 'Chưa gắn Epic', count: 2 }]));
-    expect(summary.byPeriod).toEqual(expect.arrayContaining([{ id: Number(period.id), label: 'Phase Alpha', count: 1 }, { id: null, label: 'Chưa phân bổ', count: 2 }]));
-    expect(summary.byFunction).toEqual(expect.arrayContaining([{ id: Number(fn.id), label: 'PAY-LOGIN · Payment login', count: 1 }, { id: null, label: 'Chưa gắn Function', count: 2 }]));
-    expect(summary.byPriority).toEqual(expect.arrayContaining([{ priority: 'highest', count: 1 }, { priority: 'medium', count: 2 }]));
+    expect(summary.cards).toEqual(expect.objectContaining({ completedLast7d: expect.any(Number), updatedLast7d: expect.any(Number), createdLast7d: expect.any(Number), dueNext7d: expect.any(Number) }));
+    expect(summary.byType).toEqual(expect.arrayContaining([{ type: 'bug', count: 4 }, { type: 'task', count: 1 }]));
+    const bugs = summary.bugReport;
+    expect(bugs.scope).toBe('open');
+    expect(new Date(bugs.createdLast7dFrom).toString()).not.toBe('Invalid Date');
+    expect(bugs.cards).toEqual({ total: 3, highest: 1, unassigned: 2, createdLast7d: 2 });
+    expect(bugs.statusOverview.total).toBe(3);
+    expect(bugs.byModule).toEqual(expect.arrayContaining([{ id: Number(module.id), label: 'PAY · Payments', count: 2 }, { id: null, label: 'Chưa gắn Module', count: 1 }]));
+    expect(bugs.byEpic).toEqual(expect.arrayContaining([{ id: Number(epicIssue.id), label: 'ELMS-1 · Payment Epic', count: 1 }, { id: null, label: 'Chưa gắn Epic', count: 2 }]));
+    expect(bugs.byPeriod).toEqual(expect.arrayContaining([{ id: Number(period.id), label: 'Phase Alpha', count: 1 }, { id: null, label: 'Chưa phân bổ', count: 2 }]));
+    expect(bugs.byFunction).toEqual(expect.arrayContaining([{ id: Number(fn.id), label: 'PAY-LOGIN · Payment login', count: 1 }, { id: null, label: 'Chưa gắn Function', count: 2 }]));
+    expect(bugs.byPriority).toEqual(expect.arrayContaining([{ priority: 'highest', count: 1 }, { priority: 'medium', count: 2 }]));
 
     const unlinkedKeys = async (query: string) => (await ctx.http().get(api(`/projects/ELMS/issues?type=bug&${query}`)).set(auth(t.developer)).expect(200)).body.items.map((item: any) => item.key);
     expect(await unlinkedKeys('moduleId=unassigned')).toEqual(expect.arrayContaining(['ELMS-4']));
@@ -50,7 +53,7 @@ describe('Project Bug summary', () => {
     expect(await unlinkedKeys('functionId=unassigned')).not.toContain('ELMS-2');
     expect(await unlinkedKeys('epicId=unassigned')).toEqual(expect.arrayContaining(['ELMS-3', 'ELMS-4']));
     expect(await unlinkedKeys('epicId=unassigned')).not.toContain('ELMS-2');
-    expect(await unlinkedKeys(`createdAfter=${encodeURIComponent(summary.createdLast7dFrom)}`)).toEqual(expect.arrayContaining(['ELMS-2', 'ELMS-3']));
+    expect(await unlinkedKeys(`createdAfter=${encodeURIComponent(bugs.createdLast7dFrom)}`)).toEqual(expect.arrayContaining(['ELMS-2', 'ELMS-3']));
 
     await ctx.prisma.sprint.update({ where: { id: period.id }, data: { state: 'closed', completedAt: new Date() } });
     const historical = (await ctx.http().get(api(`/projects/ELMS/backlog?type=bug&includeAllPeriods=true&sprintId=${period.id}`)).set(auth(t.developer)).expect(200)).body;
@@ -58,11 +61,11 @@ describe('Project Bug summary', () => {
     await ctx.http().get(api('/projects/ELMS/issues?createdFrom=2026-99-99')).set(auth(t.developer)).expect(400);
 
     const all = (await ctx.http().get(api('/projects/ELMS/summary?scope=all')).set(auth(t.developer)).expect(200)).body;
-    expect(all.scope).toBe('all');
-    expect(all.cards.total).toBe(4);
+    expect(all.bugReport.scope).toBe('all');
+    expect(all.bugReport.cards.total).toBe(4);
     const mine = (await ctx.http().get(api(`/projects/ELMS/summary?assigneeIds=${dev.id}`)).set(auth(t.developer)).expect(200)).body;
-    expect(mine.cards.total).toBe(1);
-    expect(mine.cards.unassigned).toBe(0);
+    expect(mine.bugReport.cards.total).toBe(1);
+    expect(mine.bugReport.cards.unassigned).toBe(0);
     void unlinked;
   });
 

@@ -53,10 +53,47 @@ export class SummaryService {
 
   async summary(projectId: bigint, f: SummaryFilter) {
     const flt = filterSql(f);
+    const [cards, statuses, source, byType, byPriority, activity, bugReport] = await Promise.all([
+      this.cards([projectId], f),
+      this.prisma.$queryRaw<{ id: bigint; name: string; category: string; color: string; position: number; n: bigint }[]>`
+        SELECT s.id, s.name, s.category, s.color, s.position, count(i.id) n
+        FROM workflow_statuses s LEFT JOIN issues i ON i.status_id = s.id AND i.deleted_at IS NULL ${flt}
+        WHERE s.project_id = ${projectId} AND (NOT s.is_archived OR i.id IS NOT NULL)
+        GROUP BY s.id ORDER BY s.position`,
+      this.prisma.$queryRaw<{ source: string; pending: boolean; n: bigint }[]>`
+        SELECT i.source, (s.category = 'triage') pending, count(*) n FROM issues i JOIN workflow_statuses s ON s.id = i.status_id
+        WHERE i.project_id = ${projectId} AND i.deleted_at IS NULL ${flt} GROUP BY 1, 2`,
+      this.prisma.$queryRaw<{ type: string; n: bigint }[]>`
+        SELECT i.type, count(*) n FROM issues i WHERE i.project_id = ${projectId} AND i.deleted_at IS NULL ${flt} GROUP BY 1 ORDER BY 2 DESC`,
+      this.prisma.$queryRaw<{ priority: string; n: bigint }[]>`
+        SELECT i.priority, count(*) n FROM issues i WHERE i.project_id = ${projectId} AND i.deleted_at IS NULL ${flt} GROUP BY 1
+        ORDER BY array_position(ARRAY['highest','high','medium','low','lowest'], i.priority)`,
+      this.recentActivity([projectId], undefined, 20),
+      this.bugReport(projectId, f),
+    ]);
+    const bySource = { manual: 0, auto: 0, pendingReview: 0 };
+    for (const row of source) {
+      bySource[row.source as 'manual' | 'auto'] += Number(row.n);
+      if (row.pending) bySource.pendingReview += Number(row.n);
+    }
+    return {
+      cards,
+      statusOverview: { total: statuses.reduce((sum, row) => sum + Number(row.n), 0), items: statuses.map((row) => ({ statusId: row.id, name: row.name, category: row.category, color: row.color, count: Number(row.n) })) },
+      bySource,
+      byType: byType.map((row) => ({ type: row.type, count: Number(row.n) })),
+      byPriority: byPriority.map((row) => ({ priority: row.priority, count: Number(row.n) })),
+      bugReport,
+      recentActivity: activity.items,
+      recentActivityNextCursor: activity.nextCursor,
+    };
+  }
+
+  private async bugReport(projectId: bigint, f: SummaryFilter) {
+    const flt = filterSql({ ...f, types: undefined });
     const scope = f.scope ?? 'open';
     const createdLast7dFrom = new Date(Date.now() - 7 * 86400_000);
     const scopeSql = scope === 'open' ? Prisma.sql`AND s.category <> 'done'` : Prisma.empty;
-    const [cardRows, statuses, source, byModule, byEpic, byPeriod, byFunction, byPriority, activity] = await Promise.all([
+    const [cardRows, statuses, source, byModule, byEpic, byPeriod, byFunction, byPriority] = await Promise.all([
       this.prisma.$queryRaw<{ total: bigint; highest: bigint; unassigned: bigint; created: bigint }[]>`
         SELECT count(*) total,
           count(*) FILTER (WHERE i.priority = 'highest') highest,
@@ -105,7 +142,6 @@ export class SummaryService {
         SELECT i.priority, count(*) n FROM issues i JOIN workflow_statuses s ON s.id = i.status_id
         WHERE i.project_id = ${projectId} AND i.deleted_at IS NULL AND i.type = 'bug' ${scopeSql} ${flt} GROUP BY 1
         ORDER BY array_position(ARRAY['highest','high','medium','low','lowest'], i.priority)`,
-      this.recentActivity([projectId], undefined, 20),
     ]);
     const total = statuses.reduce((a, s) => a + Number(s.n), 0);
     const bySource = { manual: 0, auto: 0, pendingReview: 0 };
@@ -129,8 +165,6 @@ export class SummaryService {
       byPeriod: dimension(byPeriod, 'Chưa phân bổ'),
       byFunction: dimension(byFunction, 'Chưa gắn Function'),
       byPriority: byPriority.map((r) => ({ priority: r.priority, count: Number(r.n) })),
-      recentActivity: activity.items,
-      recentActivityNextCursor: activity.nextCursor,
     };
   }
 

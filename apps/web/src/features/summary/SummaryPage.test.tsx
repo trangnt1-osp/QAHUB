@@ -28,7 +28,7 @@ vi.mock('recharts', () => ({
   Tooltip: () => null,
 }));
 
-const response = {
+const bugReport = {
   scope: 'open',
   createdLast7dFrom: '2026-10-27T12:00:00.000Z',
   cards: { total: 8, highest: 2, unassigned: 3, createdLast7d: 4 },
@@ -38,10 +38,15 @@ const response = {
   byPeriod: [{ id: 41, label: 'Phase Alpha', count: 3 }],
   byFunction: [{ id: 51, label: 'PAY-LOGIN · Login', count: 2 }],
   byPriority: [{ priority: 'highest', count: 2 }, { priority: 'medium', count: 6 }],
-  bySource: { manual: 8, auto: 0, pendingReview: 0 },
-  byType: [{ type: 'bug', count: 8 }],
-  recentActivity: [],
-  recentActivityNextCursor: null,
+};
+const response = {
+  cards: { completedLast7d: 1, updatedLast7d: 2, createdLast7d: 3, dueNext7d: 4 },
+  statusOverview: { total: 10, items: [{ statusId: 11, name: 'To Do', category: 'todo', color: '#1677ff', count: 10 }] },
+  bySource: { manual: 7, auto: 3, pendingReview: 1 },
+  byType: [{ type: 'bug', count: 8 }, { type: 'task', count: 2 }],
+  byPriority: [{ priority: 'highest', count: 3 }, { priority: 'medium', count: 7 }],
+  bugReport,
+  recentActivity: [], recentActivityNextCursor: null,
 };
 
 function LocationProbe() {
@@ -65,6 +70,9 @@ describe('SummaryPage Report BUG', () => {
     renderPage();
 
     expect(await screen.findByText('Report BUG')).toBeInTheDocument();
+    expect(screen.getByText('Status overview')).toBeInTheDocument();
+    expect(screen.getByText('Manual và Auto')).toBeInTheDocument();
+    expect(screen.getByText('Theo loại')).toBeInTheDocument();
     expect(screen.getByText('Bug đang mở')).toBeInTheDocument();
     expect(await screen.findByText('Tổng Bug đang mở')).toBeInTheDocument();
     expect(screen.getAllByText('Highest').length).toBeGreaterThan(0);
@@ -77,7 +85,7 @@ describe('SummaryPage Report BUG', () => {
   });
 
   it('switches to all Bugs and renders a clear empty state', async () => {
-    getSummary.mockResolvedValueOnce(response).mockResolvedValueOnce({ ...response, scope: 'all', cards: { total: 0, highest: 0, unassigned: 0, createdLast7d: 0 }, statusOverview: { total: 0, items: [] }, byModule: [], byEpic: [], byPeriod: [], byFunction: [], byPriority: [] });
+    getSummary.mockResolvedValueOnce(response).mockResolvedValueOnce({ ...response, bugReport: { ...bugReport, scope: 'all', cards: { total: 0, highest: 0, unassigned: 0, createdLast7d: 0 }, statusOverview: { total: 0, items: [] }, byModule: [], byEpic: [], byPeriod: [], byFunction: [], byPriority: [] } });
     renderPage();
 
     fireEvent.click(await screen.findByText('Tất cả Bug'));
