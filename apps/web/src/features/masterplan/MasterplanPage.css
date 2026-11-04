@@ -1,0 +1,31 @@
+.masterplan-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.masterplan-filters {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.masterplan-progress-note {
+  margin-left: auto;
+  font-size: 12px;
+}
+
+@media (max-width: 575px) {
+  .masterplan-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .masterplan-progress-note {
+    margin-left: 0;
+  }
+}

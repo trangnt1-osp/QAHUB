@@ -28,6 +28,7 @@ model ProjectImportSession {
 }
 
 model User {
+  masterplanMilestones MasterplanMilestone[]
   ownedEnvironments ProjectEnvironment[]
   id           BigInt    @id @default(autoincrement())
   email        String    @unique
@@ -71,6 +72,7 @@ model RefreshToken {
 }
 
 model Project {
+  masterplanMilestones MasterplanMilestone[]
   environments ProjectEnvironment[]
   id          BigInt    @id @default(autoincrement())
   key         String    @unique
@@ -527,6 +529,7 @@ model EpicModule {
   @@map("epic_modules")
 }
 model Requirement {
+  masterplanLinks MasterplanFeature[]
   id           BigInt    @id @default(autoincrement())
   projectId    BigInt    @map("project_id")
   kind         String
@@ -642,4 +645,36 @@ model TestCaseVersion {
 
   @@id([testCaseId, version])
   @@map("test_case_versions")
+}
+
+model MasterplanMilestone {
+  id BigInt @id @default(autoincrement())
+  projectId BigInt @map("project_id")
+  name String
+  startDate DateTime? @map("start_date") @db.Date
+  endDate DateTime? @map("end_date") @db.Date
+  ownerId BigInt? @map("owner_id")
+  acceptanceCriteria String? @map("acceptance_criteria")
+  notes String?
+  status String @default("planned")
+  progress Int @default(0)
+  version Int @default(1)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(6)
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  owner User? @relation(fields: [ownerId], references: [id], onDelete: SetNull)
+  featureLinks MasterplanFeature[]
+  @@index([projectId])
+  @@map("masterplan_milestones")
+}
+
+model MasterplanFeature {
+  milestoneId BigInt @map("milestone_id")
+  featureId BigInt @map("feature_id")
+  milestone MasterplanMilestone @relation(fields: [milestoneId], references: [id], onDelete: Cascade)
+  feature Requirement @relation(fields: [featureId], references: [id], onDelete: Cascade)
+  @@id([milestoneId, featureId])
+  @@index([featureId])
+  @@map("masterplan_features")
 }

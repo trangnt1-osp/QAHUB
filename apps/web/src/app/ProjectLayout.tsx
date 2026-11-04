@@ -15,6 +15,7 @@ import ProjectInfoPage from '../features/projects/ProjectInfoPage';
 // AG Grid khá nặng nên chỉ tải khi mở tab Test cases
 const ProjectStructurePage = lazy(() => import('../features/project-structure/ProjectStructurePage'));
 const TestCasesPage = lazy(() => import('../features/test-cases/TestCasesPage'));
+const MasterplanPage = lazy(() => import('../features/masterplan/MasterplanPage'));
 
 export interface ProjectTab {
   key: string;
@@ -28,6 +29,7 @@ export interface ProjectTab {
 /** Thêm tab mới (Timeline, List...) chỉ cần thêm một phần tử vào mảng này (mục 9). */
 export const projectTabs: ProjectTab[] = [
   { key: 'info', label: 'Thông tin dự án', icon: InfoCircleOutlined, path: 'info', element: ProjectInfoPage, permission: 'project.info.view' },
+  { key: 'masterplan', label: 'Masterplan', icon: ProjectOutlined, path: 'masterplan', element: MasterplanPage, permission: 'project.info.view' },
   { key: 'summary', label: 'Summary', icon: GlobalOutlined, path: 'summary', element: SummaryPage, permission: 'project.summary.view' },
   { key: 'backlog', label: 'Backlog', icon: UnorderedListOutlined, path: 'backlog', element: BacklogPage, permission: 'project.backlog.view' },
   { key: 'board', label: 'Active sprint', icon: ProjectOutlined, path: 'board', element: BoardPage, permission: 'project.board.view' },
