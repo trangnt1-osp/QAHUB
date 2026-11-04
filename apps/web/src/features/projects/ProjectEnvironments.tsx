@@ -1,5 +1,5 @@
-import { DeleteOutlined, EditOutlined, EyeOutlined, PlusOutlined } from '@ant-design/icons';
-import { App, Button, Card, Col, Form, Input, Modal, Popconfirm, Row, Select, Space, Tag, Typography } from 'antd';
+import { CopyOutlined, DeleteOutlined, EditOutlined, EyeOutlined, PlusOutlined } from '@ant-design/icons';
+import { App, Button, Card, Col, Descriptions, Form, Input, Modal, Popconfirm, Row, Select, Space, Tag, Typography } from 'antd';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { errorMessage, http } from '../../api/http';
@@ -24,6 +24,32 @@ const urlRule = { validator: (_: unknown, value?: string) => {
 } };
 function EnvironmentLink({ label, value }: { label: string; value: string | null }) {
   return value ? <div><Typography.Text type="secondary">{label}: </Typography.Text><Typography.Link href={value} target="_blank" rel="noopener noreferrer" ellipsis style={{ maxWidth: 220, verticalAlign: 'bottom' }}>{value}</Typography.Link></div> : null;
+}
+
+function EnvironmentDetails({ environment }: { environment: Environment }) {
+  const { message } = App.useApp();
+  const copy = async (label: string, value: string) => {
+    try {
+      await navigator.clipboard.writeText(value);
+      message.success(`Đã sao chép ${label}`);
+    } catch {
+      message.error(`Không thể sao chép ${label}`);
+    }
+  };
+  const linkedValue = (label: string, value: string | null) => value ? <Space size="small" wrap>
+    <Typography.Link href={value} target="_blank" rel="noopener noreferrer">{value}</Typography.Link>
+    <ActionIconButton label={`Sao chép ${label}`} icon={<CopyOutlined />} onClick={() => void copy(label, value)} />
+  </Space> : '—';
+  return <Descriptions bordered column={{ xs: 1, sm: 2 }} size="small">
+    <Descriptions.Item label="Tên môi trường">{environment.name}</Descriptions.Item>
+    <Descriptions.Item label="Loại môi trường"><Tag>{kinds.find(item => item.value === environment.kind)?.label ?? environment.kind}</Tag></Descriptions.Item>
+    <Descriptions.Item label="URL ứng dụng" span={{ xs: 1, sm: 2 }}>{linkedValue('URL ứng dụng', environment.appUrl)}</Descriptions.Item>
+    <Descriptions.Item label="URL API" span={{ xs: 1, sm: 2 }}>{linkedValue('URL API', environment.apiUrl)}</Descriptions.Item>
+    <Descriptions.Item label="Phiên bản / Build">{environment.deployedVersion ? <Space size="small"><Typography.Text>{environment.deployedVersion}</Typography.Text><ActionIconButton label="Sao chép phiên bản / Build" icon={<CopyOutlined />} onClick={() => void copy('phiên bản / Build', environment.deployedVersion!)} /></Space> : '—'}</Descriptions.Item>
+    <Descriptions.Item label="Trạng thái"><Tag color={environment.status === 'active' ? 'green' : environment.status === 'maintenance' ? 'orange' : 'default'}>{statuses.find(item => item.value === environment.status)?.label ?? environment.status}</Tag></Descriptions.Item>
+    <Descriptions.Item label="Người phụ trách" span={{ xs: 1, sm: 2 }}>{environment.owner ? <UserAvatar user={environment.owner} showName /> : '—'}</Descriptions.Item>
+    <Descriptions.Item label="Ghi chú" span={{ xs: 1, sm: 2 }}><Typography.Paragraph style={{ marginBottom: 0, whiteSpace: 'pre-wrap' }}>{environment.notes || '—'}</Typography.Paragraph></Descriptions.Item>
+  </Descriptions>;
 }
 
 export function ProjectEnvironments({ projectKey }: { projectKey: string }) {
@@ -82,17 +108,17 @@ export function ProjectEnvironments({ projectKey }: { projectKey: string }) {
         </Space> },
       ]} />
     </QueryBoundary>
-    <Modal title={readOnly ? 'Thông tin môi trường' : editor?.mode === 'edit' ? 'Sửa môi trường' : 'Thêm môi trường'} open={!!editor} width={720} destroyOnClose closable={!saving} maskClosable={!saving} keyboard={!saving} onCancel={() => !saving && setEditor(undefined)}
+    <Modal title={readOnly ? 'Thông tin môi trường' : editor?.mode === 'edit' ? 'Sửa môi trường' : 'Thêm môi trường'} open={!!editor} width={720} destroyOnHidden closable={!saving} maskClosable={!saving} keyboard={!saving} onCancel={() => !saving && setEditor(undefined)}
       afterOpenChange={visible => { if (visible) { form.resetFields(); form.setFieldsValue(editor?.row ?? { kind: 'dev', status: 'active' }); } setReady(visible); }}
       footer={<Space><Button disabled={saving} onClick={() => setEditor(undefined)}>{readOnly ? 'Đóng' : 'Hủy'}</Button>{!readOnly && <Button type="primary" onClick={() => void save()} disabled={!ready} loading={saving}>Lưu</Button>}</Space>}>
-      <Form form={form} layout="vertical" disabled={readOnly || saving || !ready}>
+      {readOnly && editor?.row ? <EnvironmentDetails environment={editor.row} /> : <Form form={form} layout="vertical" disabled={saving || !ready}>
         <Row gutter={16}><Col xs={24} sm={16}><Form.Item name="name" label="Tên môi trường" rules={[{ required: true, whitespace: true, message: 'Nhập tên môi trường' }, { max: 100 }]}><Input maxLength={100} placeholder="Ví dụ: UAT khách hàng" /></Form.Item></Col><Col xs={24} sm={8}><Form.Item name="kind" label="Loại môi trường" rules={[{ required: true }]}><Select options={kinds} /></Form.Item></Col></Row>
         <Form.Item name="appUrl" label="URL ứng dụng" rules={[urlRule, { max: 2000 }]}><Input placeholder="https://uat.example.com" /></Form.Item>
         <Form.Item name="apiUrl" label="URL API" rules={[urlRule, { max: 2000 }]}><Input placeholder="https://api-uat.example.com" /></Form.Item>
         <Row gutter={16}><Col xs={24} sm={12}><Form.Item name="deployedVersion" label="Phiên bản / Build"><Input maxLength={100} placeholder="Ví dụ: v1.2.0 / build-120" /></Form.Item></Col><Col xs={24} sm={12}><Form.Item name="status" label="Trạng thái" rules={[{ required: true }]}><Select options={statuses} /></Form.Item></Col></Row>
         <Form.Item name="ownerId" label="Người phụ trách"><Select allowClear showSearch optionFilterProp="label" loading={members.isLoading} options={[...ownerOptions.values()].map(owner => ({ value: owner.id, label: owner.displayName }))} placeholder="Chọn thành viên dự án" /></Form.Item>
         <Form.Item name="notes" label="Ghi chú"><Input.TextArea maxLength={8000} autoSize={{ minRows: 3, maxRows: 8 }} placeholder="Hướng dẫn truy cập, VPN, dữ liệu kiểm thử…" /></Form.Item>
-      </Form>
+      </Form>}
     </Modal>
   </Card>;
 }
