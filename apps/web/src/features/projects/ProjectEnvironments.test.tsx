@@ -18,6 +18,7 @@ const environment = {
   status: 'active',
   notes: 'Cần kết nối VPN',
   version: 1,
+  accounts: [{ username: 'qa@example.test', password: ' test-secret ', role: 'Tester', notes: 'VPN' }],
 };
 
 function renderEnvironments() {
@@ -47,16 +48,46 @@ describe('ProjectEnvironments', () => {
 
   afterEach(() => vi.restoreAllMocks());
 
-  it('shows clickable and copyable URLs in view mode instead of disabled edit fields', async () => {
+  it('shows clickable and copyable URLs inline', async () => {
     renderEnvironments();
 
-    fireEvent.click(await screen.findByText(environment.name));
-
-    const dialog = await screen.findByRole('dialog', { name: 'Thông tin môi trường' });
+    await screen.findByRole('combobox', { name: 'Chọn môi trường' });
+    await screen.findByRole('link', { name: environment.appUrl });
+    const dialog = document.body;
     expect(within(dialog).getByRole('link', { name: environment.appUrl })).toHaveAttribute('href', environment.appUrl);
     expect(within(dialog).getByRole('link', { name: environment.apiUrl })).toHaveAttribute('href', environment.apiUrl);
     expect(within(dialog).getByLabelText('Sao chép URL ứng dụng')).toBeInTheDocument();
     expect(within(dialog).getByLabelText('Sao chép URL API')).toBeInTheDocument();
     expect(within(dialog).queryByRole('textbox', { name: 'URL ứng dụng' })).not.toBeInTheDocument();
+    expect(screen.queryByText('Loại môi trường')).not.toBeInTheDocument();
+    expect(screen.queryByText('Người phụ trách')).not.toBeInTheDocument();
+    expect(screen.getByText('qa@example.test')).toBeInTheDocument();
+    expect(screen.getByLabelText('Mật khẩu tài khoản 1')).toHaveAttribute('type', 'password');
+    expect(screen.getByLabelText('Sao chép tài khoản 1')).toBeInTheDocument();
+  });
+
+  it('selects staging before other environments', async () => {
+    vi.mocked(http.get).mockResolvedValue({ data: [environment, { ...environment, id: 2, name: 'Staging', kind: 'staging', appUrl: 'https://staging.example.com' }] } as never);
+    renderEnvironments();
+    expect(await screen.findByRole('link', { name: 'https://staging.example.com' })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: environment.appUrl })).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Sửa môi trường')).toBeEnabled();
+    expect(screen.getByLabelText('Thêm môi trường')).toBeEnabled();
+    fireEvent.mouseDown(screen.getByRole('combobox', { name: 'Chọn môi trường' }));
+    fireEvent.click(await screen.findByText(environment.name));
+    expect(await screen.findByRole('link', { name: environment.appUrl })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'https://staging.example.com' })).not.toBeInTheDocument();
+  });
+
+  it('defaults new environments to Staging', async () => {
+    renderEnvironments();
+    fireEvent.click(await screen.findByLabelText('Thêm môi trường'));
+    const dialog = await screen.findByRole('dialog', { name: 'Thêm môi trường' });
+    expect(await within(dialog).findByDisplayValue('Staging')).toBeInTheDocument();
+    expect(within(dialog).queryByText('Loại môi trường')).not.toBeInTheDocument();
+    expect(within(dialog).queryByText('Người phụ trách')).not.toBeInTheDocument();
+    fireEvent.click(within(dialog).getByText('Thêm tài khoản'));
+    expect(within(dialog).getByLabelText('Tài khoản 1')).toBeInTheDocument();
+    expect(within(dialog).getByLabelText('Mật khẩu 1')).toHaveAttribute('type', 'password');
   });
 });

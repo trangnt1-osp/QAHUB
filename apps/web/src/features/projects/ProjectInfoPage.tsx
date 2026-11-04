@@ -27,8 +27,8 @@ export default function ProjectInfoPage() {
             { key: 'end', label: 'Ngày kết thúc', children: fmtDate(project.endDate) },
             { key: 'description', label: 'Mô tả', children: project.description || '—', span: 2 },
           ]} />
+          <ProjectEnvironments key={projectKey} projectKey={projectKey} />
         </Card>
-        <ProjectEnvironments projectKey={projectKey} />
         {viewPeriods && <ProjectPeriods projectKey={projectKey} trackingMode={project.trackingMode} />}
         {viewMembers && <ProjectMembers projectKey={projectKey} />}
       </Space>}

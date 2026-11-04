@@ -1,4 +1,4 @@
-# OSPM — Quản lý dự án & bug tự động
+![alt text](image.png)# OSPM — Quản lý dự án & bug tự động
 
 Ứng dụng nội bộ kiểu Jira cho ~10 người dùng. Điểm khác biệt: bug có thể **tạo tự động từ kết quả Playwright** qua API
 (repo Playwright là dự án riêng), và **workflow trạng thái cấu hình riêng cho từng dự án**.
@@ -17,17 +17,7 @@ scripts/simulate-ingest.ts  giả lập repo Playwright gửi một lần chạy
 docker/ docker-compose.yml  nginx, api, worker, postgres, minio
 ```
 
-Menu chính: Dashboard · Dự án (Thông tin dự án / Summary / Backlog / Active sprint hoặc Active phase / Test cases) · Member · Report · API Keys · Cấu hình.
-
-Trong dự án có tab **Epic / Module** để quản lý chung Epic, Module và Function. Một Function thuộc một Module; Function cũ chưa được phân loại vẫn được giữ trong nhóm **Chưa phân Module**. Một Epic có thể liên quan nhiều Module và chứa Story/Task/Bug; item có thể liên quan nhiều Function/Module và được phân bổ vào Sprint/Phase. Backlog và Active hỗ trợ lọc theo Epic, Module, Function; Backlog có thêm bộ lọc Sprint/Phase. Test cases hỗ trợ nhóm/lọc theo Module hoặc Epic và lấy test case thông qua Function. Liên kết Function của các item thuộc Epic cũng được dùng để xác định phạm vi test của Epic.
-
-Epic tạo nhanh trong Backlog, Test cases hoặc tab quản lý dùng chung dữ liệu. Epic nghiệp vụ (`requirements`) được ghép 1:1 với item Epic (`issues`), giữ cả mã nghiệp vụ và item key; migration 0008 giữ nguyên mã/ID/liên kết cũ và không tự gộp các Epic trùng tên. Module/Function gán trực tiếp được phân biệt với phạm vi suy ra từ item để việc đổi tên không vô tình cố định liên kết. Module/Epic còn liên kết không được xóa; xóa Function giữ cơ chế xóa mềm test case hiện có, yêu cầu quyền tương ứng và được giải thích trong hộp xác nhận.
-
-Quản trị hệ thống có thêm menu **Vai trò** để tạo vai trò tùy chỉnh và chọn quyền theo menu, tab/mục thông tin và thao tác. Có thể sửa quyền của cả các vai trò mặc định Admin/Developer/Tester/Viewer; tên/mã và việc xóa các vai trò mặc định được bảo vệ. Thay đổi áp dụng cho thành viên hiện có trong mọi dự án, còn quản trị hệ thống luôn giữ toàn quyền. Mẫu QC ban đầu chỉ có quyền xem. Vào **Thông tin dự án → Thành viên dự án → Vai trò** hoặc sửa người dùng để gán vai trò riêng cho từng người trong từng dự án. Quyền xem độc lập với thêm/sửa/xóa, bắt đầu/hoàn thành Sprint/Phase, import/export và các thao tác khác. Quyền phụ thuộc được bổ sung tự động; không thể gán quyền vượt quá quyền của người đang gán. Vai trò đã được dùng trong lịch sử thành viên không được xóa.
-
-Menu/tab và nút thao tác sử dụng cùng danh mục quyền với API; đường dẫn trực tiếp và yêu cầu hàng loạt cũng được kiểm tra. Quyền được đọc lại ở mỗi yêu cầu API, kể cả tệp đính kèm và tác vụ nền. Giao diện tải lại quyền khi cửa sổ được focus hoặc mỗi 30 giây; thay đổi quyền xóa cache cũ. Metadata phục vụ các màn được phép xem dùng endpoint runtime/options riêng, không mở quyền xem menu Cấu hình hay chi tiết thành viên. Import là thao tác thêm/cập nhật hàng loạt và yêu cầu các quyền sửa cấu trúc/category/liên kết tương ứng. Quản lý người dùng toàn hệ thống và định nghĩa vai trò chỉ dành cho quản trị hệ thống.
-
-Trong **Thông tin dự án → Quản lý Sprint / Phase**, quản trị viên chọn cách theo dõi của dự án. Developer trở lên có thể tạo, sửa, bắt đầu và hoàn thành Sprint/Phase tại đây hoặc tạo nhanh trong Backlog; các màn dùng chung dữ liệu. Sprint chỉ có một phiên đang chạy; Phase cho phép chạy song song và chọn giai đoạn cần xem trên Active. Phase chỉ hoàn thành khi các item hiện có đã xong. Không được xóa Sprint/Phase còn item liên kết (kể cả đã hoàn thành hoặc xóa mềm), hoặc đổi cách theo dõi khi còn phân bổ/đang chạy. Dự án hiện có mặc định theo Sprint.
+Menu chính: Dashboard · Dự án (Summary / Backlog / Active sprint / Test cases) · Member · Report · API Keys · Cấu hình.
 
 File đính kèm (ảnh/video/log) mặc định lưu **trên đĩa máy chủ API** (`STORAGE_DRIVER=local`), không cần MinIO/S3.
 Có thể đổi sang MinIO/S3 bằng `STORAGE_DRIVER=s3`. Xem mục [Lưu trữ file đính kèm](#lưu-trữ-file-đính-kèm).
@@ -239,22 +229,6 @@ Thử nhanh: tạo API key ở menu **API Keys** rồi
 ```bash
 APP_API_URL=http://localhost:3000 APP_API_KEY=pmk_live_... pnpm simulate-ingest --fail 3 --flaky 1
 ```
-
-## Import Module, Epic, Function và Backlog
-
-- Trong dự án, mở **Epic / Module** → chọn tab **Module**, **Epic** hoặc **Function** → **Import Excel**. Ở màn **Backlog** cũng có nút **Import Excel**.
-- Chọn **Tải mẫu Excel**, điền dữ liệu vào các sheet có sẵn rồi tải file `.xlsx` lên. File tối đa 10 MB, tổng cộng 5.000 dòng dữ liệu. Không đổi tên sheet; không dùng công thức Excel.
-- Có thể nhập riêng từng loại hoặc nhiều loại trong một file. Module → Function hoạt động độc lập, không bắt buộc có Epic. Các liên kết dùng mã đúng của dự án; nhiều mã ngăn cách bằng dấu `;`.
-- Mã Module/Epic/Function đã tồn tại sẽ được cập nhật. Với Backlog, để trống **Mã công việc** để tạo mới; điền mã hiện có để cập nhật. **Tham chiếu nội bộ** dùng để liên kết công việc cha/con mới trong cùng file, không phải mã item được lưu.
-- Khi cập nhật, ô trống giữ dữ liệu hiện tại. Điền `[CLEAR]` để xóa một trường tùy chọn hoặc bỏ liên kết. Mã định danh và tên/tiêu đề không được xóa.
-- Kiểm tra bản xem trước và lỗi từng dòng trước khi chọn **Ghi dữ liệu**. Có bất kỳ lỗi nào thì toàn bộ file chưa được ghi. Bản xem trước hết hạn sau 24 giờ; nếu dữ liệu dự án đã thay đổi, tải lại file để kiểm tra lại.
-- Vai trò cần quyền **Import Module / Epic / Function** hoặc **Import Backlog** tương ứng. File Backlog có thêm dữ liệu cấu trúc cần cả hai quyền. Trạng thái, người phụ trách và Sprint/Phase phải hợp lệ trong dự án.
-
-## Môi trường dự án
-
-Trong **Dự án → Thông tin dự án**, khu vực **Môi trường** nằm dưới thông tin chung. Quản lý DEV, SIT, UAT, Staging, Production hoặc môi trường khác, gồm URL ứng dụng/API, phiên bản/build, người phụ trách, trạng thái và ghi chú truy cập.
-
-Danh sách có tìm kiếm, STT, phân trang và icon xem/sửa/xóa có tooltip. Quyền `project.info.view` cho phép xem; `project.info.edit` cho phép thêm/sửa/xóa. Người phụ trách được chọn từ thành viên đang hoạt động của dự án; lịch sử người phụ trách đã rời dự án vẫn được giữ. Tên môi trường không trùng trong cùng dự án. Mật khẩu và token không có trường lưu riêng tại đây.
 
 ## Quy ước chính
 

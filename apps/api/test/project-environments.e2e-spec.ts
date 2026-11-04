@@ -4,6 +4,7 @@ describe('Project environments', () => {
   let ctx: TestCtx; let token: string; let viewer: string; let id: number; let ownerId: number;
   const base = '/api/v1/projects/ENV/environments';
   beforeAll(async () => {
+    process.env.ENVIRONMENT_ACCOUNTS_KEY = Buffer.alloc(32, 7).toString('base64');
     ctx = await createTestApp();
     const setup = await setupProject(ctx, 'ENV', 'Tối giản', { viewer: 'env-viewer@test.local' });
     token = setup.tokens.admin; viewer = setup.tokens.viewer;
@@ -11,6 +12,24 @@ describe('Project environments', () => {
     await setupProject(ctx, 'OTHERENV', 'Tối giản');
   });
   afterAll(async () => ctx.close());
+  it('stores multiple accounts encrypted, preserves passwords and isolates environments', async () => {
+    const accounts = [{ username: 'qa@example.test', password: ' secret with spaces ', role: 'Tester', notes: 'VPN' }, { username: 'admin', password: 'another-secret', role: 'Admin', notes: '' }];
+    const row = (await ctx.http().post(base).set(auth(token)).send({ name: 'Staging accounts', accounts }).expect(201)).body;
+    expect(row.accounts).toEqual(accounts);
+    expect(row).not.toHaveProperty('accountsEncrypted');
+    const stored = await ctx.prisma.projectEnvironment.findUniqueOrThrow({ where: { id: BigInt(row.id) } });
+    expect(stored.accountsEncrypted).toBeTruthy();
+    expect(stored.accountsEncrypted).not.toContain('secret with spaces');
+    const listed = (await ctx.http().get(base).set(auth(viewer)).expect(200)).body;
+    expect(listed.find((item: { id: number }) => item.id === row.id).accounts).toEqual(accounts);
+    await ctx.http().patch(`/api/v1/projects/OTHERENV/environments/${row.id}`).set(auth(token)).send({ version: 1, accounts: [] }).expect(404);
+    await ctx.http().patch(`${base}/${row.id}`).set(auth(viewer)).send({ version: 1, accounts: [] }).expect(403);
+    const updated = (await ctx.http().patch(`${base}/${row.id}`).set(auth(token)).send({ version: 1, notes: 'Preserve accounts' }).expect(200)).body;
+    expect(updated.accounts).toEqual(accounts);
+    expect((await ctx.http().patch(`${base}/${row.id}`).set(auth(token)).send({ version: 2, accounts: [] }).expect(200)).body.accounts).toEqual([]);
+    await ctx.http().post(base).set(auth(token)).send({ name: 'Invalid account', accounts: [{ username: '', password: 'secret' }] }).expect(400);
+    await ctx.http().delete(`${base}/${row.id}?version=3`).set(auth(token)).expect(204);
+  });
   it('creates and reads project environment details; viewers cannot change them', async () => {
     const response = await ctx.http().post(base).set(auth(token)).send({ name: 'UAT', kind: 'uat', appUrl: 'https://uat.example.test', apiUrl: 'http://localhost:3000', deployedVersion: 'v1.2', ownerId, notes: 'VPN required', status: 'active' }).expect(201);
     id = response.body.id;

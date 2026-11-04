@@ -114,6 +114,7 @@ model ProjectEnvironment {
   appUrl String? @map("app_url")
   apiUrl String? @map("api_url")
   deployedVersion String? @map("deployed_version")
+  accountsEncrypted String? @map("accounts_encrypted")
   ownerId BigInt? @map("owner_id")
   status String @default("active")
   notes String?

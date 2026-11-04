@@ -3,20 +3,26 @@ import { ERROR_CODES } from '@ospm/shared';
 import { PrismaService, Tx } from '../common/prisma.service';
 import { badRequest, conflict, notFound, unprocessable } from '../common/errors';
 import { CreateEnvironmentDto, UpdateEnvironmentDto } from './environments.dto';
+import { decryptAccounts, encryptAccounts } from './environment-accounts';
 
 const include = { owner: { select: { id: true, displayName: true, avatarUrl: true } } } as const;
 @Injectable()
 export class EnvironmentsService {
   constructor(private readonly prisma: PrismaService) {}
-  list(projectId: bigint) {
-    return this.prisma.projectEnvironment.findMany({ where: { projectId, deletedAt: null }, include, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }] });
+  async list(projectId: bigint) {
+    const rows = await this.prisma.projectEnvironment.findMany({ where: { projectId, deletedAt: null }, include, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }] });
+    return rows.map(row => this.present(row));
+  }
+  private present<T extends { accountsEncrypted: string | null; projectId: bigint }>(row: T) {
+    const { accountsEncrypted, ...data } = row;
+    return { ...data, accounts: decryptAccounts(accountsEncrypted, row.projectId) };
   }
   ownerOptions(projectId: bigint) {
     return this.prisma.projectMember.findMany({ where: { projectId, leftAt: null, user: { isActive: true } }, select: { user: include.owner }, orderBy: { id: 'asc' } })
       .then(rows => rows.map(row => row.user));
   }
   private async fields(tx: Tx, projectId: bigint, dto: CreateEnvironmentDto | UpdateEnvironmentDto, previousOwnerId?: bigint | null) {
-    const { version: _version, ownerId, ...data } = dto as UpdateEnvironmentDto;
+    const { version: _version, ownerId, accounts, ...data } = dto as UpdateEnvironmentDto;
     for (const key of ['appUrl', 'apiUrl'] as const) if (data[key]?.trim()) {
       try {
         const url = new URL(data[key]!.trim());
@@ -27,7 +33,7 @@ export class EnvironmentsService {
       throw unprocessable(ERROR_CODES.VALIDATION_ERROR, 'Người phụ trách phải là thành viên đang hoạt động của dự án');
     }
     for (const key of ['appUrl', 'apiUrl', 'deployedVersion', 'notes'] as const) if (data[key] !== undefined) data[key] = data[key]?.trim() || null;
-    return { ...data, ...(ownerId !== undefined ? { ownerId: ownerId === null ? null : BigInt(ownerId) } : {}) };
+    return { ...data, ...(accounts !== undefined ? { accountsEncrypted: encryptAccounts(accounts, projectId) } : {}), ...(ownerId !== undefined ? { ownerId: ownerId === null ? null : BigInt(ownerId) } : {}) };
   }
   async save(projectId: bigint, actorId: bigint, dto: CreateEnvironmentDto | UpdateEnvironmentDto, id?: bigint) {
     try {
@@ -40,11 +46,11 @@ export class EnvironmentsService {
           const updated = await tx.projectEnvironment.updateMany({ where: { id, projectId, deletedAt: null, version: (dto as UpdateEnvironmentDto).version }, data: { ...data, version: { increment: 1 } } });
           if (!updated.count) throw conflict(ERROR_CODES.VERSION_CONFLICT, 'Môi trường đã được thay đổi. Đóng form và mở lại để tải dữ liệu mới.');
         } else {
-          const created = await tx.projectEnvironment.create({ data: { ...data, projectId, name: dto.name!, kind: dto.kind! } });
+          const created = await tx.projectEnvironment.create({ data: { ...data, projectId, name: dto.name!, kind: dto.kind ?? 'staging' } });
           environmentId = created.id;
         }
         await tx.activityLog.create({ data: { projectId, actorId, entity: 'environment', entityId: String(environmentId), action: id ? 'updated' : 'created', changes: { fields: Object.keys(dto).filter(key => key !== 'version') } } });
-        return tx.projectEnvironment.findUniqueOrThrow({ where: { id: environmentId }, include });
+        return this.present(await tx.projectEnvironment.findUniqueOrThrow({ where: { id: environmentId }, include }));
       });
     } catch (error) {
       if ((error as { code?: string }).code === 'P2002') throw conflict('ENVIRONMENT_NAME_TAKEN', 'Tên môi trường đã tồn tại trong dự án');
