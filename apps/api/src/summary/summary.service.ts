@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import { parseId, parseIds } from '../common/bigint';
 import { clampLimit, decodeCursor, toPage } from '../common/pagination';
 import { PrismaService } from '../common/prisma.service';
+import { contributorRange, ContributorPeriod } from './bug-contributors';
 
 export interface SummaryFilter {
   assigneeIds?: bigint[];
@@ -30,6 +31,38 @@ export function parseSummaryFilter(q: { assigneeIds?: string; type?: string; sou
 @Injectable()
 export class SummaryService {
   constructor(private readonly prisma: PrismaService) {}
+
+  async bugContributors(projectId: bigint, period: ContributorPeriod, date?: string) {
+    const { from, to } = contributorRange(period, date);
+    const [rows, rejectedRows] = await Promise.all([
+      this.prisma.$queryRaw<{ id: bigint; display_name: string; avatar_url: string | null; n: bigint; rank: bigint }[]>`
+      SELECT u.id, u.display_name, u.avatar_url, count(*) n,
+        rank() OVER (ORDER BY count(*) DESC) rank
+      FROM issues i JOIN users u ON u.id = i.reporter_id
+      JOIN workflow_statuses s ON s.id = i.status_id
+      LEFT JOIN workflow_settings ws ON ws.project_id = i.project_id
+      WHERE i.project_id = ${projectId} AND i.type = 'bug' AND i.source = 'manual'
+        AND i.created_by_api_key_id IS NULL AND i.deleted_at IS NULL
+        AND i.duplicate_of_id IS NULL AND (i.resolution IS NULL OR i.resolution NOT IN ('duplicate', 'rejected'))
+        AND s.category <> 'triage' AND (ws.reject_status_id IS NULL OR i.status_id <> ws.reject_status_id)
+        AND i.created_at >= ${from} AND i.created_at < ${to}
+      GROUP BY u.id, u.display_name, u.avatar_url ORDER BY n DESC, u.id`,
+      this.prisma.$queryRaw<{ id: bigint; display_name: string; avatar_url: string | null; n: bigint }[]>`
+        SELECT u.id, u.display_name, u.avatar_url, count(*) n
+        FROM issues i JOIN users u ON u.id = i.reporter_id
+        LEFT JOIN workflow_settings ws ON ws.project_id = i.project_id
+        WHERE i.project_id = ${projectId} AND i.type = 'bug' AND i.source = 'manual'
+          AND i.created_by_api_key_id IS NULL AND i.deleted_at IS NULL AND i.duplicate_of_id IS NULL
+          AND (i.resolution IS NULL OR i.resolution <> 'duplicate')
+          AND (i.resolution = 'rejected' OR i.status_id = ws.reject_status_id)
+          AND i.created_at >= ${from} AND i.created_at < ${to}
+        GROUP BY u.id, u.display_name, u.avatar_url ORDER BY n DESC, u.id`,
+    ]);
+    const items = rows.map((row) => ({ user: { id: row.id, displayName: row.display_name, avatarUrl: row.avatar_url }, count: Number(row.n), rank: Number(row.rank) }));
+    const rejected = rejectedRows.map((row) => ({ user: { id: row.id, displayName: row.display_name, avatarUrl: row.avatar_url }, count: Number(row.n) }));
+    return { period, from: from.toISOString(), to: to.toISOString(), total: items.reduce((sum, row) => sum + row.count, 0), items,
+      rejected: { total: rejected.reduce((sum, row) => sum + row.count, 0), items: rejected } };
+  }
 
   /** Bốn thẻ số liệu 7 ngày (định nghĩa ở mục 7). Dùng chung cho Summary và Dashboard. */
   async cards(projectIds: bigint[], f: SummaryFilter = {}) {
@@ -96,7 +129,7 @@ export class SummaryService {
     const scope = f.scope ?? 'open';
     const createdLast7dFrom = new Date(Date.now() - 7 * 86400_000);
     const scopeSql = scope === 'open' ? Prisma.sql`AND s.category <> 'done'` : Prisma.empty;
-    const [cardRows, statuses, source, byModule, byEpic, byPeriod, byFunction, byPriority] = await Promise.all([
+    const [cardRows, statuses, source, byModule, byEpic, byPeriod, byFunction, byPriority, byReporter] = await Promise.all([
       this.prisma.$queryRaw<{ total: bigint; highest: bigint; unassigned: bigint; created: bigint }[]>`
         SELECT count(*) total,
           count(*) FILTER (WHERE i.priority = 'highest') highest,
@@ -145,6 +178,11 @@ export class SummaryService {
         SELECT i.priority, count(*) n FROM issues i JOIN workflow_statuses s ON s.id = i.status_id
         WHERE i.project_id = ${projectId} AND i.deleted_at IS NULL AND i.type = 'bug' ${scopeSql} ${flt} GROUP BY 1
         ORDER BY array_position(ARRAY['highest','high','medium','low','lowest'], i.priority)`,
+      this.prisma.$queryRaw<{ id: bigint | null; label: string | null; n: bigint }[]>`
+        SELECT u.id, u.display_name label, count(*) n
+        FROM issues i JOIN workflow_statuses s ON s.id = i.status_id LEFT JOIN users u ON u.id = i.reporter_id
+        WHERE i.project_id = ${projectId} AND i.deleted_at IS NULL AND i.type = 'bug' ${scopeSql} ${flt}
+        GROUP BY u.id, u.display_name ORDER BY n DESC, u.id`,
     ]);
     const total = statuses.reduce((a, s) => a + Number(s.n), 0);
     const bySource = { manual: 0, auto: 0, pendingReview: 0 };
@@ -167,6 +205,7 @@ export class SummaryService {
       byEpic: dimension(byEpic, 'Chưa gắn Epic'),
       byPeriod: dimension(byPeriod, 'Chưa phân bổ'),
       byFunction: dimension(byFunction, 'Chưa gắn Function'),
+      byReporter: dimension(byReporter, 'Không có người log'),
       byPriority: byPriority.map((r) => ({ priority: r.priority, count: Number(r.n) })),
     };
   }

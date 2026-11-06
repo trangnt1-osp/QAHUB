@@ -65,7 +65,7 @@ export function ImportButton({ projectKey }: { projectKey: string }) {
   return (
     <>
       <Button disabled={!canImport} icon={<UploadOutlined />} onClick={() => { reset(); setOpen(true); }}>Import Excel</Button>
-      <Modal title="Import test case từ Excel" open={open && canImport} onCancel={() => setOpen(false)} width={640} destroyOnClose
+      <Modal maskClosable={false} title="Import test case từ Excel" open={open && canImport} onCancel={() => setOpen(false)} width={640} destroyOnClose
         footer={step === 'preview' ? [<Button key="c" onClick={() => setOpen(false)}>Hủy</Button>, <Button key="ok" type="primary" onClick={commit}>Ghi dữ liệu</Button>] : step === 'done' ? [<Button key="x" type="primary" onClick={() => setOpen(false)}>Đóng</Button>] : null}>
         {error && <Alert type="error" showIcon message={error} style={{ marginBottom: 12 }} />}
         {step === 'pick' && (

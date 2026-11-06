@@ -1,4 +1,4 @@
-import { CheckSquareOutlined, GlobalOutlined, InfoCircleOutlined, ProjectOutlined, UnorderedListOutlined } from '@ant-design/icons';
+import { BugOutlined, CheckSquareOutlined, GlobalOutlined, InfoCircleOutlined, ProjectOutlined, UnorderedListOutlined } from '@ant-design/icons';
 import { Tabs } from 'antd';
 import { ComponentType, lazy, Suspense } from 'react';
 import { Outlet, useLocation, useNavigate, useParams } from 'react-router-dom';
@@ -16,6 +16,7 @@ import ProjectInfoPage from '../features/projects/ProjectInfoPage';
 const ProjectStructurePage = lazy(() => import('../features/project-structure/ProjectStructurePage'));
 const TestCasesPage = lazy(() => import('../features/test-cases/TestCasesPage'));
 const MasterplanPage = lazy(() => import('../features/masterplan/MasterplanPage'));
+const BugReportPage = lazy(() => import('../features/summary/BugReportPage'));
 
 export interface ProjectTab {
   key: string;
@@ -32,9 +33,10 @@ export const projectTabs: ProjectTab[] = [
   { key: 'masterplan', label: 'Masterplan', icon: ProjectOutlined, path: 'masterplan', element: MasterplanPage, permission: 'project.info.view' },
   { key: 'summary', label: 'Summary', icon: GlobalOutlined, path: 'summary', element: SummaryPage, permission: 'project.summary.view' },
   { key: 'backlog', label: 'Backlog', icon: UnorderedListOutlined, path: 'backlog', element: BacklogPage, permission: 'project.backlog.view' },
-  { key: 'board', label: 'Active sprint', icon: ProjectOutlined, path: 'board', element: BoardPage, permission: 'project.board.view' },
   { key: 'structure', label: 'Epic / Module', icon: ProjectOutlined, path: 'structure', element: ProjectStructurePage, permission: 'project.structure.view' },
+  { key: 'board', label: 'Active sprint', icon: ProjectOutlined, path: 'board', element: BoardPage, permission: 'project.board.view' },
   { key: 'test-cases', label: 'Test cases', icon: CheckSquareOutlined, path: 'test-cases', element: TestCasesPage, permission: 'testcase.view' },
+  { key: 'bugs', label: 'Bug', icon: BugOutlined, path: 'bugs', element: BugReportPage, permission: 'project.summary.view' },
 ];
 
 export function ProjectLayout() {

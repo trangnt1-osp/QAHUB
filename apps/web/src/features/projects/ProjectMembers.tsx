@@ -113,9 +113,9 @@ export function ProjectMembers({ projectKey, canManage }: { projectKey: string; 
           onClick={() => { setLeaving(m); setLeftDate(today); }} /> : null }] : []),
       ]} />
     </QueryBoundary>
-    <Modal title="Ghi nhận rời dự án" open={!!leaving} onCancel={() => { if (!saving) setLeaving(null); }} onOk={leave}
+    <Modal maskClosable={false} title="Ghi nhận rời dự án" open={!!leaving} onCancel={() => { if (!saving) setLeaving(null); }} onOk={leave}
       okText="Xác nhận rời dự án" cancelText="Hủy" confirmLoading={saving} okButtonProps={{ danger: true, disabled: !leftDate }}
-      cancelButtonProps={{ disabled: saving }} closable={!saving} maskClosable={!saving} keyboard={!saving}>
+      cancelButtonProps={{ disabled: saving }} closable={!saving} keyboard={!saving}>
       <Space direction="vertical" style={{ width: '100%' }}>
         <span>Quyền thành viên của {leaving?.user.displayName} sẽ được thu hồi. Lịch sử tham gia được giữ lại.</span>
         <label htmlFor="member-left-date">Ngày rời dự án</label>

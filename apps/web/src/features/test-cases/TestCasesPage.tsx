@@ -214,7 +214,7 @@ function RequirementModal({ kind, projectKey, epics, defaultModuleId, onClose, o
   const { message } = App.useApp();
   const { data: structure } = useProjectStructure(kind ? projectKey : undefined);
   return (
-    <Modal title={kind === 'epic' ? 'Thêm epic' : kind === 'module' ? 'Thêm Module' : 'Thêm function'} open={!!kind} onCancel={onClose} onOk={() => form.submit()} okButtonProps={{ disabled: !initialized }} okText="Tạo" cancelText="Hủy" destroyOnClose afterOpenChange={(open) => { if (open) { form.resetFields(); if (kind === 'function' && defaultModuleId) form.setFieldsValue({ moduleId: Number(defaultModuleId) }); } setInitialized(open); }}>
+    <Modal maskClosable={false} title={kind === 'epic' ? 'Thêm epic' : kind === 'module' ? 'Thêm Module' : 'Thêm function'} open={!!kind} onCancel={onClose} onOk={() => form.submit()} okButtonProps={{ disabled: !initialized }} okText="Tạo" cancelText="Hủy" destroyOnClose afterOpenChange={(open) => { if (open) { form.resetFields(); if (kind === 'function' && defaultModuleId) form.setFieldsValue({ moduleId: Number(defaultModuleId) }); } setInitialized(open); }}>
       <Form form={form} layout="vertical" disabled={!initialized} onFinish={async (v) => {
         if (!canCreate || !kind) return;
         try {

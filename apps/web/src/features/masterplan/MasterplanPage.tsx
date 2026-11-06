@@ -103,7 +103,7 @@ function MilestoneEditor({ base, row, onClose, onSaved }: { base: string; row?: 
   const features = new Map((options.data?.features ?? []).map(feature => [feature.id, feature]));
   row?.features.forEach(feature => features.set(feature.id, feature));
   const selectedStatus = Form.useWatch('status', form);
-  return <Modal open title={row ? 'Sửa mốc kế hoạch' : 'Thêm mốc kế hoạch'} width={760} onCancel={() => !saving && onClose()} closable={!saving} maskClosable={!saving} keyboard={!saving}
+  return <Modal maskClosable={false} open title={row ? 'Sửa mốc kế hoạch' : 'Thêm mốc kế hoạch'} width={760} onCancel={() => !saving && onClose()} closable={!saving} keyboard={!saving}
     okText="Lưu" cancelText="Hủy" confirmLoading={saving} onOk={() => form.submit()} cancelButtonProps={{ disabled: saving }}>
     <Form form={form} layout="vertical" disabled={saving} initialValues={row ? { ...row, range: [row.startDate ? dayjs(row.startDate) : null, row.endDate ? dayjs(row.endDate) : null], featureIds: row.features.map(feature => feature.id) } : { status: 'planned', progress: 0, featureIds: [] }}
       onValuesChange={changed => { if (changed.status === 'completed') form.setFieldValue('progress', 100); }}

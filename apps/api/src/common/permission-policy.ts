@@ -14,6 +14,7 @@ export const ENDPOINT_PERMISSIONS: Record<string, Permission | Permission[]> = {
   'BoardsController.getBacklog': 'project.backlog.view',
   'BoardsController.getBoard': 'project.board.view',
   'SummaryController.getSummary': 'project.summary.view',
+  'SummaryController.getBugContributors': 'project.summary.view',
   'SummaryController.getProjectActivity': 'project.summary.view',
   'IssuesController.listIssues': 'issue.view',
   'IssuesController.getIssue': 'issue.view',

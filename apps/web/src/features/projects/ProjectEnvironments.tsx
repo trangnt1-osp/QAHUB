@@ -124,7 +124,7 @@ export function ProjectEnvironments({ projectKey }: { projectKey: string }) {
     <QueryBoundary isLoading={query.isLoading} error={query.error} refetch={query.refetch}>
       {selected ? <EnvironmentDetails key={selected.id} environment={selected} /> : <Empty description="Chưa có môi trường" image={Empty.PRESENTED_IMAGE_SIMPLE} />}
     </QueryBoundary>
-    <Modal title={readOnly ? 'Thông tin môi trường' : editor?.mode === 'edit' ? 'Sửa môi trường' : 'Thêm môi trường'} open={!!editor} width={720} destroyOnHidden closable={!saving} maskClosable={!saving} keyboard={!saving} onCancel={() => !saving && setEditor(undefined)}
+    <Modal maskClosable={false} title={readOnly ? 'Thông tin môi trường' : editor?.mode === 'edit' ? 'Sửa môi trường' : 'Thêm môi trường'} open={!!editor} width={720} destroyOnHidden closable={!saving} keyboard={!saving} onCancel={() => !saving && setEditor(undefined)}
       afterOpenChange={visible => { if (visible) { form.resetFields(); form.setFieldsValue(editor?.row ?? { name: 'Staging', status: 'active', accounts: [] }); } setReady(visible); }}
       footer={<Space>{canEdit && editor?.mode === 'edit' && editor.row && <Popconfirm title="Xóa môi trường này?" onConfirm={async () => {
         const row = editor.row!;

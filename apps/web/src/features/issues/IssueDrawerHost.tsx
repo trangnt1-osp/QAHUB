@@ -9,7 +9,7 @@ export function IssueDrawerHost() {
   const { selected, select } = useSelectedIssue();
   const nav = useNavigate();
   return (
-    <Drawer open={!!selected} onClose={() => select(null)} width="min(1100px, 92vw)" destroyOnClose title={selected}
+    <Drawer maskClosable={false} open={!!selected} onClose={() => select(null)} width="min(1100px, 92vw)" destroyOnClose title={selected}
       extra={selected && <Button icon={<ExportOutlined />} onClick={() => { select(null); nav(`/browse/${selected}`); }}>Mở trang riêng</Button>}>
       {selected && <IssueDetailView issueKey={selected} onDeleted={() => select(null)} />}
     </Drawer>

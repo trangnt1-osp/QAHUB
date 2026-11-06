@@ -43,7 +43,7 @@ export function TriageButtons({ issueKey, projectKey, onDone, size = 'small' }: 
         <Button size={size} danger icon={<CloseOutlined />} onClick={() => setAction('reject')}>Reject</Button>
         <Button size={size} icon={<CopyOutlined />} onClick={() => setAction('duplicate')}>Duplicate</Button>
       </Space>
-      <Modal open={!!action} title={action ? title[action] : ''} onCancel={() => setAction(null)} onOk={() => form.submit()} confirmLoading={saving} okText="Xác nhận" cancelText="Hủy" destroyOnClose>
+      <Modal maskClosable={false} open={!!action} title={action ? title[action] : ''} onCancel={() => setAction(null)} onOk={() => form.submit()} confirmLoading={saving} okText="Xác nhận" cancelText="Hủy" destroyOnClose>
         <Form form={form} layout="vertical" onFinish={submit} initialValues={{ priority: undefined }}>
           {action === 'accept' && (
             <>

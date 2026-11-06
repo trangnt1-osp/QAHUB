@@ -51,9 +51,9 @@ export function EditProjectModal({ project, onClose }: { project: ProjectRow; on
     }
   }
 
-  return <Modal title="Sửa dự án" open onCancel={() => { if (!saving) onClose(); }}
+  return <Modal maskClosable={false} title="Sửa dự án" open onCancel={() => { if (!saving) onClose(); }}
     onOk={() => form.submit()} okText="Lưu" cancelText="Hủy" confirmLoading={saving}
-    cancelButtonProps={{ disabled: saving }} closable={!saving} maskClosable={!saving} keyboard={!saving}>
+    cancelButtonProps={{ disabled: saving }} closable={!saving} keyboard={!saving}>
     <Form form={form} layout="vertical" disabled={saving} onFinish={save}
       initialValues={{ name: project.name, description: project.description ?? '', leadId: project.lead?.id, ...projectDateInitialValues(project) }}>
       <Form.Item label="Mã dự án"><Input value={project.key} disabled /></Form.Item>

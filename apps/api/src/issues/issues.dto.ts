@@ -13,6 +13,7 @@ export class ListIssuesQuery extends PaginationQuery {
   @IsOptional() @IsIn(['open', 'done']) statusCategory?: 'open' | 'done';
   @IsOptional() @IsDateString({ strict: true }) createdFrom?: string;
   @IsOptional() @IsDateString() createdAfter?: string;
+  @IsOptional() @IsString() reporterId?: string;
   @IsOptional() @csv() @IsArray() assigneeIds?: string[];
   @IsOptional() @csv() @IsArray() labelIds?: string[];
   @IsOptional() @IsString() functionId?: string;

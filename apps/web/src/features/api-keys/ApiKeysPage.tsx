@@ -53,7 +53,7 @@ export function ApiKeysPage() {
         ]} />
       </QueryBoundary>
 
-      <Modal title="Tạo API key" open={open} onCancel={() => setOpen(false)} onOk={() => form.submit()} okText="Tạo" cancelText="Hủy" destroyOnClose>
+      <Modal maskClosable={false} title="Tạo API key" open={open} onCancel={() => setOpen(false)} onOk={() => form.submit()} okText="Tạo" cancelText="Hủy" destroyOnClose>
         <Form form={form} layout="vertical" initialValues={{ scopes: ['runs:write'], days: 90 }} onFinish={async (v) => {
           if (!canManage || !projectKey) return;
           try {
@@ -67,7 +67,7 @@ export function ApiKeysPage() {
         </Form>
       </Modal>
 
-      <Modal title="API key đã tạo" open={!!created} onCancel={() => setCreated(null)} footer={<Button type="primary" onClick={() => setCreated(null)}>Tôi đã lưu key</Button>} width={640} maskClosable={false}>
+      <Modal maskClosable={false} title="API key đã tạo" open={!!created} onCancel={() => setCreated(null)} footer={<Button type="primary" onClick={() => setCreated(null)}>Tôi đã lưu key</Button>} width={640}>
         {created && (
           <Space direction="vertical" style={{ width: '100%' }}>
             <Alert type="warning" showIcon message="Key chỉ hiển thị một lần" description="Hãy sao chép và lưu vào biến bí mật của CI ngay bây giờ. Hệ thống chỉ lưu hash nên không thể xem lại." />

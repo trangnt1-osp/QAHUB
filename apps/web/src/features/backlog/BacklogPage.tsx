@@ -45,7 +45,7 @@ type Row =
   | { kind: 'pagination'; id: string; container: string; total: number };
 
 const BACKLOG = 'backlog';
-const FILTER_KEYS = ['q', 'assigneeIds', 'epicId', 'moduleId', 'functionId', 'sprintId', 'type', 'priority', 'labelIds', 'source', 'statusIds', 'statusCategory', 'createdFrom'] as const;
+const FILTER_KEYS = ['q', 'assigneeIds', 'reporterId', 'epicId', 'moduleId', 'functionId', 'sprintId', 'type', 'priority', 'labelIds', 'source', 'statusIds', 'statusCategory', 'createdFrom', 'createdAfter'] as const;
 
 export default function BacklogPage() {
   const { projectKey = '' } = useParams();

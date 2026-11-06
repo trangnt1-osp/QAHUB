@@ -81,7 +81,7 @@ function ResultDrawer({ id, onClose }: { id: number | null; onClose: () => void 
   const qc = useQueryClient();
   const { message } = App.useApp();
   return (
-    <Drawer open={!!id} onClose={onClose} width="min(900px, 94vw)" destroyOnClose title={data ? data.titlePath.join(' › ') : 'Kết quả'}>
+    <Drawer maskClosable={false} open={!!id} onClose={onClose} width="min(900px, 94vw)" destroyOnClose title={data ? data.titlePath.join(' › ') : 'Kết quả'}>
       {data && (
         <Space direction="vertical" style={{ width: '100%' }} size="middle">
           <Descriptions size="small" column={2}>

@@ -73,8 +73,8 @@ export function RolesPage() {
         </Space> },
       ]} />
     </QueryBoundary>
-    <Drawer title={editing === 'new' ? 'Thêm vai trò' : 'Sửa vai trò'} open={editing !== null} width="min(960px, 100vw)"
-      onClose={() => { if (!saving) setEditing(null); }} closable={!saving} maskClosable={!saving} keyboard={!saving}
+    <Drawer maskClosable={false} title={editing === 'new' ? 'Thêm vai trò' : 'Sửa vai trò'} open={editing !== null} width="min(960px, 100vw)"
+      onClose={() => { if (!saving) setEditing(null); }} closable={!saving} keyboard={!saving}
       footer={<Space style={{ display: 'flex', justifyContent: 'flex-end' }}><Button disabled={saving} onClick={() => setEditing(null)}>Hủy</Button><Button type="primary" aria-label="Lưu" loading={saving} onClick={() => form.submit()}>Lưu</Button></Space>}>
       <Form form={form} layout="vertical" disabled={saving} onFinish={save}>
         <Row gutter={16}>

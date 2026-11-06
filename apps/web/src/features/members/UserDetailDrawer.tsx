@@ -105,8 +105,8 @@ export function UserDetailDrawer({ userId, initialMode = 'view', onClose }: { us
     } finally { setSaving(false); }
   }
 
-  return <Drawer title="Thông tin người dùng" open onClose={close} width="min(960px, 100vw)"
-    closable={!saving} maskClosable={!saving} keyboard={!saving}
+  return <Drawer maskClosable={false} title="Thông tin người dùng" open onClose={close} width="min(960px, 100vw)"
+    closable={!saving} keyboard={!saving}
     extra={<Tag color={editing ? 'blue' : 'default'}>{editing ? 'Chỉnh sửa' : 'Chỉ xem'}</Tag>}
     footer={<Space style={{ display: 'flex', justifyContent: 'flex-end' }}>
       <Button disabled={saving} onClick={close}>{editing ? 'Hủy' : 'Đóng'}</Button>

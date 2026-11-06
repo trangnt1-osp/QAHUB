@@ -4,6 +4,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { vi } from 'vitest';
 import SummaryPage from './SummaryPage';
+import BugReportPage from './BugReportPage';
 import { useUi } from '../../stores/ui';
 
 const getSummary = vi.fn();
@@ -38,6 +39,7 @@ const bugReport = {
   byEpic: [{ id: 31, label: 'DEMO-1 · Checkout', count: 4 }],
   byPeriod: [{ id: 41, label: 'Phase Alpha', count: 3 }],
   byFunction: [{ id: 51, label: 'PAY-LOGIN · Login', count: 2 }],
+  byReporter: [{ id: 9, label: 'Nguyễn An', count: 5 }],
   byPriority: [{ priority: 'highest', count: 2 }, { priority: 'medium', count: 6 }],
 };
 const response = {
@@ -55,15 +57,15 @@ function LocationProbe() {
   return <output aria-label="location">{location.pathname}{location.search}</output>;
 }
 
-function renderPage() {
+function renderPage(page: 'summary' | 'bugs' = 'bugs') {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return render(<App><QueryClientProvider client={client}><MemoryRouter initialEntries={['/projects/DEMO/summary']}><Routes>
-    <Route path="/projects/:projectKey/summary" element={<><SummaryPage /><LocationProbe /></>} />
+  return render(<App><QueryClientProvider client={client}><MemoryRouter initialEntries={[`/projects/DEMO/${page}`]}><Routes>
+    <Route path="/projects/:projectKey/:page" element={<>{page === 'bugs' ? <BugReportPage /> : <SummaryPage />}<LocationProbe /></>} />
     <Route path="/projects/:projectKey/backlog" element={<LocationProbe />} />
   </Routes></MemoryRouter></QueryClientProvider></App>);
 }
 
-describe('SummaryPage Report BUG', () => {
+describe('BugReportPage', () => {
   beforeEach(() => getSummary.mockResolvedValue(response));
   afterEach(() => { vi.clearAllMocks(); useUi.getState().setAssigneeFilter('DEMO', []); });
 
@@ -71,9 +73,9 @@ describe('SummaryPage Report BUG', () => {
     renderPage();
 
     expect(await screen.findByText('Report BUG')).toBeInTheDocument();
-    expect(screen.getByText('Status overview')).toBeInTheDocument();
-    expect(screen.getByText('Manual và Auto')).toBeInTheDocument();
-    expect(screen.getByText('Theo loại')).toBeInTheDocument();
+    expect(screen.queryByText('Status overview')).not.toBeInTheDocument();
+    expect(screen.queryByText('Manual và Auto')).not.toBeInTheDocument();
+    expect(screen.queryByText('Theo loại')).not.toBeInTheDocument();
     expect(screen.getByText('Bug đang mở')).toBeInTheDocument();
     expect(await screen.findByText('Tổng Bug đang mở')).toBeInTheDocument();
     expect(screen.getAllByText('Highest').length).toBeGreaterThan(0);
@@ -81,7 +83,7 @@ describe('SummaryPage Report BUG', () => {
     expect(screen.getByText('Mới trong 7 ngày')).toBeInTheDocument();
     for (const title of ['Theo trạng thái', 'Theo Module', 'Theo Epic', 'Theo Phase', 'Theo tính năng', 'Theo Priority']) expect(screen.getByText(title)).toBeInTheDocument();
     // Ant Design exposes both the select container and its input with the same accessible label.
-    expect(screen.getAllByLabelText('Lọc Sprint/Phase')).toHaveLength(20);
+    expect(screen.getAllByLabelText('Lọc Sprint/Phase')).toHaveLength(22);
 
     fireEvent.click(screen.getByText('PAY · Payments'));
     expect(await screen.findByLabelText('location')).toHaveTextContent('/projects/DEMO/backlog?type=bug&includeAllPeriods=true&statusCategory=open&moduleId=21');
@@ -95,10 +97,23 @@ describe('SummaryPage Report BUG', () => {
     expect(await screen.findByText('Chưa có Bug trong phạm vi đã chọn')).toBeInTheDocument();
   });
 
+  it('drills the reporter report into Backlog', async () => {
+    renderPage();
+    fireEvent.click(await screen.findByText('Nguyễn An'));
+    expect(await screen.findByLabelText('location')).toHaveTextContent('/projects/DEMO/backlog?type=bug&includeAllPeriods=true&statusCategory=open&reporterId=9');
+  });
+
   it('does not replace an active assignee filter from the unassigned KPI', async () => {
     useUi.getState().setAssigneeFilter('DEMO', [7]);
     renderPage();
     fireEvent.click(await screen.findByText('Chưa phân công'));
-    expect(screen.getByLabelText('location')).toHaveTextContent('/projects/DEMO/summary');
+    expect(screen.getByLabelText('location')).toHaveTextContent('/projects/DEMO/bugs');
+  });
+
+  it('keeps the overview and activity in Summary without the Bug report', async () => {
+    renderPage('summary');
+    expect(await screen.findByText('Status overview')).toBeInTheDocument();
+    expect(screen.getByText('Recent activity')).toBeInTheDocument();
+    expect(screen.queryByText('Report BUG')).not.toBeInTheDocument();
   });
 });

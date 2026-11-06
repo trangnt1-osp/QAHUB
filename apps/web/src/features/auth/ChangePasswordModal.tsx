@@ -8,7 +8,7 @@ export function ChangePasswordModal({ open, onClose }: { open: boolean; onClose:
   const [saving, setSaving] = useState(false);
   const { message } = App.useApp();
   return (
-    <Modal title="Đổi mật khẩu" open={open} onCancel={onClose} onOk={() => form.submit()} confirmLoading={saving} okText="Lưu" cancelText="Hủy" destroyOnClose>
+    <Modal maskClosable={false} title="Đổi mật khẩu" open={open} onCancel={onClose} onOk={() => form.submit()} confirmLoading={saving} okText="Lưu" cancelText="Hủy" destroyOnClose>
       <Form form={form} layout="vertical" onFinish={async (v) => {
         setSaving(true);
         try { await changePassword({ currentPassword: v.currentPassword, newPassword: v.newPassword }); message.success('Đã đổi mật khẩu'); onClose(); form.resetFields(); }

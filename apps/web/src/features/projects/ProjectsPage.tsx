@@ -78,7 +78,7 @@ function CreateProjectModal({ open, onClose }: { open: boolean; onClose: () => v
   const { message } = App.useApp();
   const reload = useAuth((s) => s.reload);
   return (
-    <Modal title="Tạo dự án" open={open} onCancel={onClose} onOk={() => form.submit()} confirmLoading={saving} okText="Tạo" cancelText="Hủy" destroyOnClose>
+    <Modal maskClosable={false} title="Tạo dự án" open={open} onCancel={onClose} onOk={() => form.submit()} confirmLoading={saving} okText="Tạo" cancelText="Hủy" destroyOnClose>
       <Form form={form} layout="vertical" onFinish={async (v) => {
         setSaving(true);
         try {

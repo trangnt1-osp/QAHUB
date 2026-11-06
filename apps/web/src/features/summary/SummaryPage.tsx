@@ -1,13 +1,12 @@
 import { fmtNumber } from '../../lib/number';
 import { FilterOutlined, FullscreenOutlined } from '@ant-design/icons';
-import { Button, Card, Col, Empty, Modal, Popover, Row, Segmented, Select, Space, Statistic, Typography } from 'antd';
+import { Button, Card, Col, Modal, Popover, Row, Select, Space, Statistic, Typography } from 'antd';
 import { useQuery } from '@tanstack/react-query';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip as RTooltip } from 'recharts';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ISSUE_TYPES } from '@ospm/shared';
 import { getProjectActivity, getSummary } from '../../api/generated/api';
-import { useMembers, useProjectTracking, useSprints } from '../../api/hooks';
+import { useMembers } from '../../api/hooks';
 import type { ActivityItem } from '../../api/models';
 import { AvatarFilter } from '../../components/AvatarFilter';
 import { QueryBoundary } from '../../components/EmptyState';
@@ -17,21 +16,12 @@ import { UserAvatar } from '../../components/UserAvatar';
 import { dayLabel, fmtDateTime } from '../../lib/date';
 import { useUi } from '../../stores/ui';
 import { useSelectedIssue } from '../issues/useSelectedIssue';
-import { BugBreakdown, type BugBreakdownRow } from './BugBreakdown';
+import type { BugReportData } from './BugReportPage';
+import { StatusDonut } from './StatusDonut';
 
 const EMPTY: number[] = [];
 
-type Scope = 'open' | 'all';
-interface DimensionRow { id: number | null; label: string; count: number }
-interface BugReportData {
-  scope: Scope;
-  createdLast7dFrom: string;
-  cards: { total: number; highest: number; unassigned: number; createdLast7d: number };
-  statusOverview: { total: number; items: { statusId: number; name: string; category: string; color: string; count: number }[] };
-  byModule: DimensionRow[]; byEpic: DimensionRow[]; byPeriod: DimensionRow[]; byFunction: DimensionRow[];
-  byPriority: { priority: string; count: number }[];
-}
-interface SummaryData {
+export interface SummaryData {
   cards: { completedLast7d: number; updatedLast7d: number; createdLast7d: number; dueNext7d: number };
   statusOverview: { total: number; items: { statusId: number; name: string; category: string; color: string; count: number }[] };
   bySource: { manual: number; auto: number; pendingReview: number };
@@ -39,17 +29,6 @@ interface SummaryData {
   byPriority: { priority: string; count: number }[];
   bugReport: BugReportData;
   recentActivity: ActivityItem[]; recentActivityNextCursor: string | null;
-}
-
-export function buildBugBacklogUrl(projectKey: string, scope: Scope, common: { assigneeIds?: number[]; source?: string }, extra: Record<string, string | number | undefined> = {}) {
-  const query = new URLSearchParams();
-  query.set('type', 'bug');
-  query.set('includeAllPeriods', 'true');
-  if (scope === 'open') query.set('statusCategory', 'open');
-  if (common.assigneeIds?.length) query.set('assigneeIds', common.assigneeIds.join(','));
-  if (common.source) query.set('source', common.source);
-  for (const [key, value] of Object.entries(extra)) if (value !== undefined) query.set(key, String(value));
-  return `/projects/${encodeURIComponent(projectKey)}/backlog?${query}`;
 }
 
 export default function SummaryPage() {
@@ -60,14 +39,8 @@ export default function SummaryPage() {
   const setAssignees = useUi((s) => s.setAssigneeFilter);
   const [types, setTypes] = useState<string[]>([]);
   const [source, setSource] = useState<string>();
-  const [scope, setScope] = useState<Scope>('open');
-  const trackingMode = useProjectTracking(projectKey);
-  const { data: periods = [] } = useSprints(projectKey);
-  const params = { assigneeIds: assignees.join(',') || undefined, type: types.join(',') || undefined, source, scope };
+  const params = { assigneeIds: assignees.join(',') || undefined, type: types.join(',') || undefined, source };
   const { data, isLoading, error, refetch } = useQuery<SummaryData>({ queryKey: ['summary', projectKey, params], queryFn: () => getSummary(projectKey, { params }) });
-  const common = { assigneeIds: assignees, source };
-  const goBacklog = (extra: Record<string, string | number | undefined> = {}) => nav(buildBugBacklogUrl(projectKey, scope, common, extra));
-  const dimensionRows = (rows: DimensionRow[]): BugBreakdownRow[] => rows.map((row) => ({ key: String(row.id ?? 'none'), label: row.label, count: row.count, value: row.id }));
   const triageIds = (data?.statusOverview.items ?? []).filter((status) => status.category === 'triage').map((status) => status.statusId).join(',');
 
   return (
@@ -98,102 +71,12 @@ export default function SummaryPage() {
                 <Card title="Theo priority" size="small"><Bars rows={data.byPriority.map((row) => ({ label: <PriorityIcon priority={row.priority} withLabel />, count: row.count }))} /></Card>
               </Col>
             </Row>
-            <Space style={{ margin: '28px 0 16px', width: '100%', justifyContent: 'space-between' }} wrap><Typography.Title level={3} style={{ margin: 0 }}>Report BUG</Typography.Title><Segmented value={scope} onChange={(value) => setScope(value as Scope)} options={[{ value: 'open', label: 'Bug đang mở' }, { value: 'all', label: 'Tất cả Bug' }]} /></Space>
-            <Row gutter={[16, 16]}>
-              <BugMetricWidget title={scope === 'open' ? 'Tổng Bug đang mở' : 'Tổng Bug'} cardKey="total" projectKey={projectKey} params={params} base={data.bugReport} periods={periods} onOpen={(period) => goBacklog({ sprintId: period })} />
-              <BugMetricWidget title="Highest" cardKey="highest" projectKey={projectKey} params={params} base={data.bugReport} periods={periods} onOpen={(period) => goBacklog({ priority: 'highest', sprintId: period })} />
-              <BugMetricWidget title="Chưa phân công" cardKey="unassigned" projectKey={projectKey} params={params} base={data.bugReport} periods={periods} disabled={assignees.length > 0} onOpen={(period) => goBacklog({ assigneeIds: 'unassigned', sprintId: period })} />
-              <BugMetricWidget title="Mới trong 7 ngày" cardKey="createdLast7d" projectKey={projectKey} params={params} base={data.bugReport} periods={periods} onOpen={(period, report) => goBacklog({ createdAfter: report.createdLast7dFrom, sprintId: period })} />
-            </Row>
-            {data.bugReport.cards.total === 0 && <Empty style={{ margin: '24px 0' }} description="Chưa có Bug trong phạm vi đã chọn" />}
-            <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
-              <BugStatusWidget projectKey={projectKey} params={params} base={data.bugReport} periods={periods} onOpen={(statusId, period) => goBacklog({ statusIds: statusId, sprintId: period })} />
-              <BugDimensionWidget title="Theo Priority" projectKey={projectKey} params={params} base={data.bugReport} periods={periods} rows={(report) => report.byPriority.map((row) => ({ key: row.priority, label: <PriorityIcon priority={row.priority} withLabel />, count: row.count, value: row.priority }))} onOpen={(value, period) => goBacklog({ priority: String(value), sprintId: period })} />
-              <BugDimensionWidget title="Theo Module" projectKey={projectKey} params={params} base={data.bugReport} periods={periods} rows={(report) => dimensionRows(report.byModule)} onOpen={(value, period) => goBacklog({ moduleId: value ?? 'unassigned', sprintId: period })} note="Một Bug có thể xuất hiện ở nhiều Module." />
-              <BugDimensionWidget title="Theo Epic" projectKey={projectKey} params={params} base={data.bugReport} periods={periods} rows={(report) => dimensionRows(report.byEpic)} onOpen={(value, period) => goBacklog({ epicId: value ?? 'unassigned', sprintId: period })} />
-              <BugDimensionWidget title={`Theo ${trackingMode === 'phase' ? 'Phase' : 'Sprint'}`} projectKey={projectKey} params={params} base={data.bugReport} periods={periods} rows={(report) => dimensionRows(report.byPeriod)} onOpen={(value, period) => goBacklog({ sprintId: period ?? value ?? 'backlog' })} />
-              <BugDimensionWidget title="Theo tính năng" projectKey={projectKey} params={params} base={data.bugReport} periods={periods} rows={(report) => dimensionRows(report.byFunction)} onOpen={(value, period) => goBacklog({ functionId: value ?? 'unassigned', sprintId: period })} note="Một Bug có thể xuất hiện ở nhiều tính năng." />
-            </Row>
             <Card title="Recent activity" style={{ marginTop: 16 }} extra={<ActivityExpand projectKey={projectKey} />}>
               <ActivityFeed projectKey={projectKey} initial={data.recentActivity} initialCursor={data.recentActivityNextCursor} maxHeight={420} />
             </Card>
           </>
         )}
       </QueryBoundary>
-    </div>
-  );
-}
-
-type PeriodOption = { id: number; name: string };
-type SummaryParams = { assigneeIds?: string; type?: string; source?: string; scope: Scope };
-
-function useWidgetReport(projectKey: string, params: SummaryParams, period: string | undefined, base: BugReportData) {
-  const query = useQuery<SummaryData>({
-    queryKey: ['summary', projectKey, 'bug-widget', params, period],
-    queryFn: () => getSummary(projectKey, { params: { ...params, sprintId: period } }),
-    enabled: period !== undefined,
-  });
-  return period === undefined ? base : query.data?.bugReport ?? base;
-}
-
-function PeriodFilter({ periods, value, onChange }: { periods: PeriodOption[]; value?: string; onChange: (value?: string) => void }) {
-  return <Select aria-label="Lọc Sprint/Phase" allowClear placeholder="Tất cả Sprint/Phase" value={value} onChange={onChange} onClick={(event) => event.stopPropagation()} style={{ width: 170 }}
-    options={[{ value: 'backlog', label: 'Chưa phân bổ' }, ...periods.map((period) => ({ value: String(period.id), label: period.name }))]} />;
-}
-
-function BugMetricWidget({ title, cardKey, projectKey, params, base, periods, disabled, onOpen }: {
-  title: string; cardKey: keyof BugReportData['cards']; projectKey: string; params: SummaryParams; base: BugReportData; periods: PeriodOption[]; disabled?: boolean;
-  onOpen: (period: string | undefined, report: BugReportData) => void;
-}) {
-  const [period, setPeriod] = useState<string>();
-  const report = useWidgetReport(projectKey, params, period, base);
-  return <Col xs={12} md={6}><Card hoverable={!disabled} onClick={disabled ? undefined : () => onOpen(period, report)} extra={<PeriodFilter periods={periods} value={period} onChange={setPeriod} />}>
-    <Statistic groupSeparator="." decimalSeparator="," title={title} value={report.cards[cardKey]} />
-  </Card></Col>;
-}
-
-function BugStatusWidget({ projectKey, params, base, periods, onOpen }: { projectKey: string; params: SummaryParams; base: BugReportData; periods: PeriodOption[]; onOpen: (statusId: number, period?: string) => void }) {
-  const [period, setPeriod] = useState<string>();
-  const report = useWidgetReport(projectKey, params, period, base);
-  return <Col xs={24} lg={12}><Card title="Theo trạng thái" extra={<PeriodFilter periods={periods} value={period} onChange={setPeriod} />} style={{ height: '100%' }}>
-    <StatusDonut data={report.statusOverview} onSlice={(id) => onOpen(id, period)} totalLabel="Bug" />
-  </Card></Col>;
-}
-
-function BugDimensionWidget({ title, projectKey, params, base, periods, rows, onOpen, note }: {
-  title: string; projectKey: string; params: SummaryParams; base: BugReportData; periods: PeriodOption[];
-  rows: (report: BugReportData) => BugBreakdownRow[]; onOpen: (value: BugBreakdownRow['value'], period?: string) => void; note?: string;
-}) {
-  const [period, setPeriod] = useState<string>();
-  const report = useWidgetReport(projectKey, params, period, base);
-  return <Col xs={24} lg={12}><BugBreakdown title={title} rows={rows(report)} onSelect={(value) => onOpen(value, period)} note={note} extra={<PeriodFilter periods={periods} value={period} onChange={setPeriod} />} /></Col>;
-}
-
-function StatusDonut({ data, onSlice, totalLabel }: { data: { total: number; items: { statusId: number; name: string; color: string; count: number }[] }; onSlice: (statusId: number) => void; totalLabel: string }) {
-  const items = data.items.filter((i) => i.count > 0);
-  return (
-    <div style={{ display: 'flex', gap: 24, alignItems: 'center', flexWrap: 'wrap' }}>
-      <div style={{ position: 'relative', width: 240, height: 240 }}>
-        <ResponsiveContainer>
-          <PieChart>
-            <Pie data={items} dataKey="count" nameKey="name" innerRadius={72} outerRadius={110} paddingAngle={1} onClick={(d: any) => onSlice(d.statusId)} cursor="pointer" isAnimationActive={false}>
-              {items.map((i) => <Cell key={i.statusId} fill={i.color} />)}
-            </Pie>
-            <RTooltip formatter={(value) => typeof value === 'number' ? fmtNumber(value) : value} />
-          </PieChart>
-        </ResponsiveContainer>
-        <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', pointerEvents: 'none', textAlign: 'center' }}>
-          <div><div style={{ fontSize: 28, fontWeight: 700 }}>{fmtNumber(data.total)}</div><div className="muted" style={{ fontSize: 12 }}>{totalLabel}</div></div>
-        </div>
-      </div>
-      <div style={{ maxHeight: 220, overflow: 'auto', flex: 1, minWidth: 180 }}>
-        {data.items.map((i) => (
-          <div key={i.statusId} onClick={() => i.count && onSlice(i.statusId)} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '3px 0', cursor: i.count ? 'pointer' : 'default' }}>
-            <span style={{ width: 10, height: 10, borderRadius: 2, background: i.color, display: 'inline-block' }} />
-            <span>{i.name}: <b>{fmtNumber(i.count)}</b></span>
-          </div>
-        ))}
-      </div>
     </div>
   );
 }
@@ -255,7 +138,7 @@ function ActivityExpand({ projectKey }: { projectKey: string }) {
   return (
     <>
       <Button icon={<FullscreenOutlined />} type="text" onClick={() => setOpen(true)} aria-label="Mở rộng" />
-      <Modal open={open} onCancel={() => setOpen(false)} footer={null} width="90vw" title="Recent activity" destroyOnHidden>
+      <Modal maskClosable={false} open={open} onCancel={() => setOpen(false)} footer={null} width="90vw" title="Recent activity" destroyOnHidden>
         {data && <ActivityFeed projectKey={projectKey} initial={data.items} initialCursor={data.nextCursor} maxHeight="70vh" />}
       </Modal>
     </>

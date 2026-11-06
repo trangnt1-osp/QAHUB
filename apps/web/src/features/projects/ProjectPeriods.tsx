@@ -75,7 +75,7 @@ export function ProjectPeriods({ projectKey, trackingMode = 'sprint' }: { projec
         ]} />
       </QueryBoundary>
     </Space>
-    <Modal title={`Tạo ${label}`} open={canCreate && creating} onCancel={() => { if (!saving) setCreating(false); }} onOk={() => form.submit()} confirmLoading={saving} okText="Tạo" cancelText="Hủy" destroyOnClose>
+    <Modal maskClosable={false} title={`Tạo ${label}`} open={canCreate && creating} onCancel={() => { if (!saving) setCreating(false); }} onOk={() => form.submit()} confirmLoading={saving} okText="Tạo" cancelText="Hủy" destroyOnClose>
       <Form form={form} layout="vertical" disabled={saving} onFinish={async (values) => {
         if (saving || !canCreate) return;
         setSaving(true);

@@ -14,7 +14,7 @@ export function StartSprintModal({ sprint, open, onClose }: { sprint: Sprint | n
   const [saving, setSaving] = useState(false);
   const label = sprint?.kind === 'phase' ? 'phase' : 'sprint';
   useEffect(() => { if (open && sprint) form.setFieldsValue({ range: [sprint.startDate ? dayjs(sprint.startDate) : dayjs(), sprint.endDate ? dayjs(sprint.endDate) : dayjs(sprint.startDate ?? undefined).add(14, 'day')], goal: sprint.goal }); }, [open, sprint, form]);
-  return <Modal title={`Bắt đầu ${sprint?.name ?? ''}`} open={open} onCancel={onClose} onOk={() => form.submit()} confirmLoading={saving} okText="Bắt đầu" cancelText="Hủy" destroyOnClose>
+  return <Modal maskClosable={false} title={`Bắt đầu ${sprint?.name ?? ''}`} open={open} onCancel={onClose} onOk={() => form.submit()} confirmLoading={saving} okText="Bắt đầu" cancelText="Hủy" destroyOnClose>
     <Form form={form} layout="vertical" disabled={saving} onFinish={async (v) => {
       if (!open || !sprint || saving) return;
       setSaving(true);
@@ -34,7 +34,7 @@ export function EditSprintModal({ sprint, open, onClose }: { sprint: Sprint | nu
   const [saving, setSaving] = useState(false);
   const label = sprint?.kind === 'phase' ? 'phase' : 'sprint';
   useEffect(() => { if (open && sprint) form.setFieldsValue({ name: sprint.name, goal: sprint.goal, range: sprint.startDate || sprint.endDate ? [sprint.startDate ? dayjs(sprint.startDate) : null, sprint.endDate ? dayjs(sprint.endDate) : null] : undefined }); }, [open, sprint, form]);
-  return <Modal title={`Sửa ${label}`} open={open} onCancel={onClose} onOk={() => form.submit()} confirmLoading={saving} okText="Lưu" cancelText="Hủy" destroyOnClose>
+  return <Modal maskClosable={false} title={`Sửa ${label}`} open={open} onCancel={onClose} onOk={() => form.submit()} confirmLoading={saving} okText="Lưu" cancelText="Hủy" destroyOnClose>
     <Form form={form} layout="vertical" disabled={saving} onFinish={async (v) => {
       if (!open || !sprint || saving) return;
       setSaving(true);
@@ -58,7 +58,7 @@ export function CompleteSprintModal({ sprint, done, open, notDone, futureSprints
   const phase = sprint?.kind === 'phase';
   const label = phase ? 'phase' : 'sprint';
   useEffect(() => { if (open) setTarget('backlog'); }, [open]);
-  return <Modal title={`Hoàn thành ${sprint?.name ?? ''}`} open={open} onCancel={onClose} okText={`Hoàn thành ${label}`} cancelText="Hủy" confirmLoading={saving} destroyOnClose
+  return <Modal maskClosable={false} title={`Hoàn thành ${sprint?.name ?? ''}`} open={open} onCancel={onClose} okText={`Hoàn thành ${label}`} cancelText="Hủy" confirmLoading={saving} destroyOnClose
     okButtonProps={{ disabled: phase && notDone > 0 }} onOk={async () => {
       if (!open || !sprint || saving || (phase && notDone > 0)) return;
       setSaving(true);

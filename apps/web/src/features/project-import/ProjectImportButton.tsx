@@ -52,7 +52,7 @@ export function ProjectImportButton({ projectKey, scope, templateKind, canImport
   const rows = result?.rows ?? preview?.rows ?? [];
   return <>
     <Button aria-label={label} icon={<UploadOutlined />} onClick={() => { reset(); setKind(templateKind); setOpen(true); }}>{label}</Button>
-    <Modal title={`Import ${scope === 'structure' ? 'cấu trúc dự án' : 'Backlog'} từ Excel`} open={open} width={1000} style={{ maxWidth: 'calc(100vw - 24px)' }} styles={{ body: { maxHeight: '65vh', overflowY: 'auto' } }} closable={!busy} maskClosable={!busy} keyboard={!busy} onCancel={() => { if (!busy) setOpen(false); }} destroyOnClose
+    <Modal maskClosable={false} title={`Import ${scope === 'structure' ? 'cấu trúc dự án' : 'Backlog'} từ Excel`} open={open} width={1000} style={{ maxWidth: 'calc(100vw - 24px)' }} styles={{ body: { maxHeight: '65vh', overflowY: 'auto' } }} closable={!busy} keyboard={!busy} onCancel={() => { if (!busy) setOpen(false); }} destroyOnClose
       footer={<Space wrap><Button disabled={busy} onClick={() => setOpen(false)}>Đóng</Button>{(preview || result || file) && <Button disabled={busy} onClick={reset}>Chọn file khác</Button>}{!preview && file && error && <Button disabled={busy} onClick={() => void upload(file)}>Thử lại</Button>}{preview && !result && <Button type="primary" loading={busy} disabled={blocked} onClick={() => void commit()}>Ghi dữ liệu</Button>}</Space>}>
       <Space direction="vertical" size="middle" style={{ width: '100%' }}>
         <Steps size="small" current={result ? 2 : preview ? 1 : 0} items={[{ title: 'Chọn file' }, { title: 'Xem trước' }, { title: 'Kết quả' }]} />

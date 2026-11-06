@@ -26,7 +26,7 @@ export function CreateIssueModal() {
   const { data: members = [] } = useMembers(open ? projectKey : undefined);
   const options = projects.filter((p) => hasPermission(p.projectKey, 'issue.create'));
   return (
-    <Modal title="Tạo item" open={open} onCancel={hide} okText="Tạo" cancelText="Hủy" confirmLoading={saving} okButtonProps={{ disabled: !initialized }} destroyOnClose
+    <Modal maskClosable={false} title="Tạo item" open={open} onCancel={hide} okText="Tạo" cancelText="Hủy" confirmLoading={saving} okButtonProps={{ disabled: !initialized }} destroyOnClose
       onOk={() => form.submit()} afterOpenChange={(o) => { if (o) { form.resetFields(); form.setFieldsValue({ projectKey: options.find((p) => p.projectKey === preset)?.projectKey ?? options[0]?.projectKey, type: 'task', priority: 'medium', structure: { moduleIds: [], functionIds: [] } }); } setInitialized(o); }}>
       <Form form={form} layout="vertical" disabled={!initialized || saving} onFinish={async (v) => {
         if (!hasPermission(v.projectKey, 'issue.create')) return;

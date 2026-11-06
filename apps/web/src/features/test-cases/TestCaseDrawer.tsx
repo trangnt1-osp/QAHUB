@@ -107,7 +107,7 @@ function AuthorizedTestCaseDrawer({ projectKey, id, onClose, onSaved, creating =
   };
 
   return (
-    <Drawer open={open} onClose={onClose} width="min(900px, 94vw)" destroyOnClose title={creating ? 'Thêm test case' : data ? `${data.code}` : 'Test case'} closable={!saving} maskClosable={!saving} keyboard={!saving}
+    <Drawer maskClosable={false} open={open} onClose={onClose} width="min(900px, 94vw)" destroyOnClose title={creating ? 'Thêm test case' : data ? `${data.code}` : 'Test case'} closable={!saving} keyboard={!saving}
       afterOpenChange={(visible) => {
         if (visible && creating) {
           form.resetFields();

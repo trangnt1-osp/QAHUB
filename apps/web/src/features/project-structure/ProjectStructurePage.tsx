@@ -75,7 +75,7 @@ export default function ProjectStructurePage() {
       { title: 'Liên quan', key: 'related', render: (_: unknown, row: Row) => related(row) },
       ...((canEdit || canDelete) ? [{ title: 'Thao tác', key: 'actions', width: 100, render: (_: unknown, row: Row) => <Space>{canEdit && <ActionIconButton label={`Sửa ${labels[kind]}`} icon={<EditOutlined />} onClick={() => open(row)} />}{canDelete && <ActionIconButton label={`Xóa ${labels[kind]}`} icon={<DeleteOutlined />} danger onClick={() => remove(row)} />}</Space> }] : []),
     ]} />
-    <Modal title={`${editing?.row ? 'Sửa' : 'Thêm'} ${labels[editing?.kind ?? kind]}`} open={!!editing} onCancel={() => { if (!saving) setEditing(undefined); }} onOk={submit} confirmLoading={saving} okButtonProps={{ disabled: !formReady }} afterOpenChange={(opened) => {
+    <Modal maskClosable={false} title={`${editing?.row ? 'Sửa' : 'Thêm'} ${labels[editing?.kind ?? kind]}`} open={!!editing} onCancel={() => { if (!saving) setEditing(undefined); }} onOk={submit} confirmLoading={saving} okButtonProps={{ disabled: !formReady }} afterOpenChange={(opened) => {
       if (opened && editing) {
         form.resetFields();
         form.setFieldsValue(structureFormValues(editing.row));

@@ -47,8 +47,8 @@ export class SprintsService {
       const project = await tx.project.findUniqueOrThrow({ where: { id: projectId } });
       const kind = project.trackingMode;
       const n = (await tx.sprint.count({ where: { projectId, kind } })) + 1;
-      const last = await tx.sprint.findFirst({ where: { projectId, kind, deletedAt: null }, orderBy: { position: 'desc' } });
-      const period = await tx.sprint.create({ data: { projectId, kind, name: dto.name?.trim() || `${projectKey} ${kind === 'phase' ? 'Phase' : 'Sprint'} ${n}`, goal: dto.goal, startDate: dateValue(dto.startDate), endDate: dateValue(dto.endDate), position: (last?.position ?? 0) + 1 } });
+      const first = await tx.sprint.findFirst({ where: { projectId, deletedAt: null }, orderBy: { position: 'asc' } });
+      const period = await tx.sprint.create({ data: { projectId, kind, name: dto.name?.trim() || `${projectKey} ${kind === 'phase' ? 'Phase' : 'Sprint'} ${n}`, goal: dto.goal, startDate: dateValue(dto.startDate), endDate: dateValue(dto.endDate), position: (first?.position ?? 1) - 1 } });
       await this.activity.log({ projectId, entity: 'sprint', entityId: period.id, action: 'created', actorId, changes: { name: [null, period.name], kind } }, tx);
       return period;
     });

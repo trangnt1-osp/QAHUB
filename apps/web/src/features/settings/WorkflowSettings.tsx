@@ -175,7 +175,7 @@ export function WorkflowSettings() {
 
       {canEdit && <div><Button type="primary" size="large" loading={saving} onClick={save}>Lưu workflow</Button></div>}
 
-      <Modal open={canEdit && !!replace} title="Chọn trạng thái thay thế" onCancel={() => setReplace(null)} okText="Lưu" cancelText="Hủy" confirmLoading={saving}
+      <Modal maskClosable={false} open={canEdit && !!replace} title="Chọn trạng thái thay thế" onCancel={() => setReplace(null)} okText="Lưu" cancelText="Hủy" confirmLoading={saving}
         okButtonProps={{ disabled: !canEdit || !replace || replace.removed.some((r) => !replace.map[r.ref]) }} onOk={() => doSave(replace!.map)}>
         <Typography.Paragraph>Các trạng thái sau đang có item. Chọn trạng thái để chuyển toàn bộ item sang (trong một transaction), trạng thái cũ sẽ được lưu trữ.</Typography.Paragraph>
         {replace?.removed.map((r) => (

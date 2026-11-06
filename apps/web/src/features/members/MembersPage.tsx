@@ -58,7 +58,7 @@ function UsersTab() {
         ) },
       ]} />
       {selected && <UserDetailDrawer key={selected.userId} userId={selected.userId} initialMode={selected.mode} onClose={() => setSelected(null)} />}
-      <Modal title="Thêm người dùng" open={open} onCancel={() => setOpen(false)} onOk={() => form.submit()} okText="Tạo" cancelText="Hủy" destroyOnClose>
+      <Modal maskClosable={false} title="Thêm người dùng" open={open} onCancel={() => setOpen(false)} onOk={() => form.submit()} okText="Tạo" cancelText="Hủy" destroyOnClose>
         <Form form={form} layout="vertical" initialValues={{ systemRole: 'member' }} onFinish={async (v) => {
           try { await createUser(v); message.success('Đã tạo người dùng'); await qc.invalidateQueries({ queryKey: ['users'] }); setOpen(false); form.resetFields(); } catch (e) { message.error(errorMessage(e)); }
         }}>

@@ -36,7 +36,7 @@ export class BoardsService {
         : q.includeAllPeriods
           ? { projectId: project.id, deletedAt: null }
           : { projectId: project.id, kind: config.trackingMode, deletedAt: null, state: { in: ['active', 'future'] } },
-      orderBy: [{ state: 'asc' }, { position: 'asc' }, { id: 'asc' }], // 'active' < 'future'
+      orderBy: [{ position: 'asc' }, { id: 'asc' }],
     });
     const result = [];
     for (const sprint of sprints) {
