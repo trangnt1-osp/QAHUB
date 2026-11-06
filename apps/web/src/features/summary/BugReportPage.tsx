@@ -14,6 +14,8 @@ import { BugBreakdown, type BugBreakdownRow } from './BugBreakdown';
 import { StatusDonut } from './StatusDonut';
 import type { SummaryData } from './SummaryPage';
 import { BugRecognition } from './BugRecognition';
+import BacklogPage from '../backlog/BacklogPage';
+import { PermissionGate } from '../auth/PermissionGate';
 
 const EMPTY: number[] = [];
 
@@ -41,10 +43,10 @@ export function buildBugBacklogUrl(projectKey: string, scope: Scope, common: { a
 
 export default function BugReportPage() {
   const { projectKey = '' } = useParams();
-  const [view, setView] = useState('report');
+  const [view, setView] = useState('list');
   return <div>
-    <div className="page" style={{ paddingBottom: 0 }}><Segmented aria-label="Màn hình Bug" value={view} onChange={setView} options={[{ value: 'report', label: 'Báo cáo Bug' }, { value: 'recognition', label: 'Vinh danh' }]} /></div>
-    {view === 'recognition' ? <BugRecognition projectKey={projectKey} /> : <BugReportDashboard />}
+    <div className="page" style={{ paddingBottom: 0 }}><Segmented aria-label="Màn hình Bug" value={view} onChange={setView} options={[{ value: 'list', label: 'Danh sách Bug' }, { value: 'report', label: 'Báo cáo Bug' }, { value: 'recognition', label: 'Vinh danh' }]} /></div>
+    {view === 'list' ? <PermissionGate permission="project.backlog.view"><BacklogPage fixedType="bug" /></PermissionGate> : view === 'recognition' ? <BugRecognition projectKey={projectKey} /> : <BugReportDashboard />}
   </div>;
 }
 

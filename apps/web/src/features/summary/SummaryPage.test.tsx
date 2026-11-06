@@ -6,6 +6,9 @@ import { vi } from 'vitest';
 import SummaryPage from './SummaryPage';
 import BugReportPage from './BugReportPage';
 import { useUi } from '../../stores/ui';
+import { useAuth } from '../auth/authStore';
+
+vi.mock('../backlog/BacklogPage', () => ({ default: ({ fixedType }: { fixedType?: string }) => <div>Backlog list: {fixedType}</div> }));
 
 const getSummary = vi.fn();
 
@@ -57,17 +60,32 @@ function LocationProbe() {
   return <output aria-label="location">{location.pathname}{location.search}</output>;
 }
 
-function renderPage(page: 'summary' | 'bugs' = 'bugs') {
+function renderPage(page: 'summary' | 'bugs' = 'bugs', report = true) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return render(<App><QueryClientProvider client={client}><MemoryRouter initialEntries={[`/projects/DEMO/${page}`]}><Routes>
+  const result = render(<App><QueryClientProvider client={client}><MemoryRouter initialEntries={[`/projects/DEMO/${page}`]}><Routes>
     <Route path="/projects/:projectKey/:page" element={<>{page === 'bugs' ? <BugReportPage /> : <SummaryPage />}<LocationProbe /></>} />
     <Route path="/projects/:projectKey/backlog" element={<LocationProbe />} />
   </Routes></MemoryRouter></QueryClientProvider></App>);
+  if (page === 'bugs' && report) fireEvent.click(screen.getByText('Báo cáo Bug'));
+  return result;
 }
 
 describe('BugReportPage', () => {
-  beforeEach(() => getSummary.mockResolvedValue(response));
-  afterEach(() => { vi.clearAllMocks(); useUi.getState().setAssigneeFilter('DEMO', []); });
+  beforeEach(() => { getSummary.mockResolvedValue(response); });
+  afterEach(() => { vi.clearAllMocks(); useUi.getState().setAssigneeFilter('DEMO', []); useAuth.setState({ projects: [] }); });
+
+  it('opens the shared Backlog list constrained to Bug by default', () => {
+    useAuth.setState({ projects: [{ projectId: 1, projectKey: 'DEMO', projectName: 'Demo', role: 'viewer', permissions: ['project.backlog.view'] }] });
+    renderPage('bugs', false);
+    expect(screen.getByText('Backlog list: bug')).toBeInTheDocument();
+    expect(getSummary).not.toHaveBeenCalled();
+  });
+
+  it('does not mount the Backlog list without backlog permission', () => {
+    renderPage('bugs', false);
+    expect(screen.queryByText('Backlog list: bug')).not.toBeInTheDocument();
+    expect(getSummary).not.toHaveBeenCalled();
+  });
 
   it('shows the open Bug dashboard and drills a Module into Backlog', async () => {
     renderPage();

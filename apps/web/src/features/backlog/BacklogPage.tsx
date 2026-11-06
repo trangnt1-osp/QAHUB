@@ -47,7 +47,7 @@ type Row =
 const BACKLOG = 'backlog';
 const FILTER_KEYS = ['q', 'assigneeIds', 'reporterId', 'epicId', 'moduleId', 'functionId', 'sprintId', 'type', 'priority', 'labelIds', 'source', 'statusIds', 'statusCategory', 'createdFrom', 'createdAfter'] as const;
 
-export default function BacklogPage() {
+export default function BacklogPage({ fixedType }: { fixedType?: 'bug' } = {}) {
   const { projectKey = '' } = useParams();
   const periodLabel = useProjectTracking(projectKey) === 'phase' ? 'phase' : 'sprint';
   const { data: periods = [] } = useSprints(projectKey);
@@ -75,8 +75,9 @@ export default function BacklogPage() {
   const filters = useMemo(() => {
     const f: Record<string, any> = {};
     for (const k of FILTER_KEYS) { const v = sp.get(k); if (v) f[k] = ['assigneeIds', 'type', 'priority', 'labelIds', 'statusIds'].includes(k) ? v.split(',') : v; }
+    if (fixedType) f.type = [fixedType];
     return f;
-  }, [sp]);
+  }, [sp, fixedType]);
   const setFilter = (k: string, v: string | string[] | undefined) => setSp((p) => {
     const n = new URLSearchParams(p);
     const s = Array.isArray(v) ? v.join(',') : v;
@@ -84,7 +85,8 @@ export default function BacklogPage() {
     if (k === 'moduleId') n.delete('functionId');
     return n;
   }, { replace: true });
-  const hasFilters = Object.keys(filters).length > 0;
+  const hasFilters = Object.keys(filters).some((key) => key !== 'type' || !fixedType);
+  const isFiltered = hasFilters || !!fixedType;
 
   const { data, isLoading, error, refetch } = useQuery<any>({ queryKey: ['backlog', projectKey, filters], queryFn: () => getBacklog(projectKey, { ...filters, limit: 100 } as any) });
   const [layout, setLayout] = useState<Layout | null>(null);
@@ -282,7 +284,7 @@ export default function BacklogPage() {
   return (
     <div className="page" style={{ paddingBottom: 0 }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
-        <div style={{ minWidth: 0 }}><FilterBar projectKey={projectKey} filters={filters} setFilter={setFilter} clear={() => setSp({}, { replace: true })} hasFilters={hasFilters} members={members.map((m) => m.user)} structure={structure.data} loading={structure.isLoading} /></div>
+        <div style={{ minWidth: 0 }}><FilterBar fixedType={fixedType} projectKey={projectKey} filters={filters} setFilter={setFilter} clear={() => setSp({}, { replace: true })} hasFilters={hasFilters} members={members.map((m) => m.user)} structure={structure.data} loading={structure.isLoading} /></div>
         <ProjectImportButton projectKey={projectKey} scope="backlog" templateKind="backlog" canImport={canImport} />
         {canCreatePeriod && <Button type="primary" icon={<PlusOutlined />} loading={creatingSprint} onClick={addSprint} style={{ flexShrink: 0 }}>Tạo {periodLabel}</Button>}
       </div>
@@ -297,7 +299,7 @@ export default function BacklogPage() {
                   return (
                     <div key={r.id} style={{ position: 'absolute', top: 0, left: 0, right: 0, transform: `translateY(${v.start}px)`, height: v.size }}>
                       {r.kind === 'sprint' && (
-                        <SprintHeader block={r.block} collapsed={collapsed.has(`s${r.block.sprint.id}`)} hasFilters={hasFilters} canEdit={canEditPeriod} canStart={canStartPeriod} canComplete={canCompletePeriod} canDelete={canDeletePeriod} hasActive={!!hasActive}
+                        <SprintHeader block={r.block} collapsed={collapsed.has(`s${r.block.sprint.id}`)} hasFilters={isFiltered} canEdit={canEditPeriod} canStart={canStartPeriod} canComplete={canCompletePeriod} canDelete={canDeletePeriod} hasActive={!!hasActive}
                           toggle={() => setCollapsed((c) => { const n = new Set(c); const k = `s${r.block.sprint.id}`; n.has(k) ? n.delete(k) : n.add(k); return n; })}
                           onStart={() => setStartFor(r.block.sprint)} onComplete={() => setCompleteFor(r.block)} onEdit={() => setEditFor(r.block.sprint)}
                           onDelete={() => void deletePeriod(r.block.sprint)} />
@@ -317,7 +319,7 @@ export default function BacklogPage() {
                         {r.container === BACKLOG && loadError && <span role="alert">{loadError} <Button size="small" onClick={() => setLoadError(null)}>Retry</Button></span>}
                       </div>}
                       {r.kind === 'empty' && <EmptyDrop container={r.container} />}
-                      {r.kind === 'create' && <QuickCreate projectKey={projectKey} sprintId={r.container === BACKLOG ? undefined : Number(r.container.slice(1))} parentKey={structure.data?.epics.find((epic) => String(epic.id) === filters.epicId)?.key} moduleId={filters.moduleId ? Number(filters.moduleId) : undefined} functionId={filters.functionId ? Number(filters.functionId) : undefined} onCreated={() => qc.invalidateQueries()} />}
+                      {r.kind === 'create' && <QuickCreate fixedType={fixedType} projectKey={projectKey} sprintId={r.container === BACKLOG ? undefined : Number(r.container.slice(1))} parentKey={structure.data?.epics.find((epic) => String(epic.id) === filters.epicId)?.key} moduleId={filters.moduleId ? Number(filters.moduleId) : undefined} functionId={filters.functionId ? Number(filters.functionId) : undefined} onCreated={() => qc.invalidateQueries()} />}
                     </div>
                   );
                 })}
@@ -338,9 +340,9 @@ export default function BacklogPage() {
   );
 }
 
-function FilterBar({ projectKey, filters, setFilter, clear, hasFilters, members, structure, loading }: {
+function FilterBar({ projectKey, filters, setFilter, clear, hasFilters, members, structure, loading, fixedType }: {
   projectKey: string; filters: Record<string, any>; setFilter: (k: string, v: string | string[] | undefined) => void; clear: () => void; hasFilters: boolean; members: { id: number; displayName: string }[];
-  structure?: ProjectStructure; loading?: boolean;
+  structure?: ProjectStructure; loading?: boolean; fixedType?: 'bug';
 }) {
   const { data: wf } = useWorkflow(projectKey);
   const { data: periods = [] } = useSprints(projectKey);
@@ -359,7 +361,7 @@ function FilterBar({ projectKey, filters, setFilter, clear, hasFilters, members,
         options={[{ value: 'unassigned', label: 'Chưa gắn Function' }, ...(structure?.functions ?? []).filter((fn) => !filters.moduleId || filters.moduleId === 'unassigned' || String(fn.moduleId) === filters.moduleId).map((fn) => ({ value: fn.id, label: `${fn.code} · ${fn.name}` }))]} />
       <Select aria-label={phase ? 'Lọc Phase' : 'Lọc Sprint'} allowClear placeholder={phase ? 'Phase' : 'Sprint'} style={{ width: 160 }} value={filters.sprintId} onChange={(value) => setFilter('sprintId', value)}
         options={[{ value: 'backlog', label: 'Chưa phân bổ' }, ...periods.map((period) => ({ value: String(period.id), label: period.name }))]} />
-      <Select mode="multiple" allowClear placeholder="Type" style={{ minWidth: 120 }} maxTagCount="responsive" value={filters.type} onChange={(v) => setFilter('type', v)} options={ISSUE_TYPES.map((t) => ({ value: t, label: ISSUE_TYPE_LABEL[t] }))} />
+      {fixedType ? <Tag icon={<IssueTypeIcon type={fixedType} />}>Bug</Tag> : <Select mode="multiple" allowClear placeholder="Type" style={{ minWidth: 120 }} maxTagCount="responsive" value={filters.type} onChange={(v) => setFilter('type', v)} options={ISSUE_TYPES.map((t) => ({ value: t, label: ISSUE_TYPE_LABEL[t] }))} />}
       <Select mode="multiple" allowClear placeholder="Priority" style={{ minWidth: 130 }} maxTagCount="responsive" value={filters.priority} onChange={(v) => setFilter('priority', v)} options={PRIORITIES.map((priority) => ({ value: priority, label: priority }))} />
       <LabelSelect projectKey={projectKey} value={(filters.labelIds ?? []).map(Number)} onChange={(ids) => setFilter('labelIds', ids.map(String))} />
       <Select allowClear placeholder="Source" style={{ width: 120 }} value={filters.source} onChange={(v) => setFilter('source', v)} options={[{ value: 'manual', label: 'Manual' }, { value: 'auto', label: 'Auto' }]} />
@@ -452,11 +454,12 @@ const IssueRowView = memo(function IssueRowView({ ordinal, issue, canEdit, canTr
   );
 });
 
-function QuickCreate({ projectKey, sprintId, parentKey, moduleId, functionId, onCreated }: { projectKey: string; sprintId?: number; parentKey?: string; moduleId?: number; functionId?: number; onCreated: () => void }) {
+function QuickCreate({ projectKey, sprintId, parentKey, moduleId, functionId, onCreated, fixedType }: { projectKey: string; sprintId?: number; parentKey?: string; moduleId?: number; functionId?: number; onCreated: () => void; fixedType?: 'bug' }) {
   const canCreate = usePermission(projectKey, 'issue.create');
   const [active, setActive] = useState(false);
   const [title, setTitle] = useState('');
-  const [type, setType] = useState('task');
+  const [selectedType, setType] = useState('task');
+  const type = fixedType ?? selectedType;
   const { message } = App.useApp();
   const submit = async () => {
     if (!canCreate || !title.trim()) return;
@@ -469,7 +472,7 @@ function QuickCreate({ projectKey, sprintId, parentKey, moduleId, functionId, on
     <div className="issue-row" style={{ height: '100%', boxSizing: 'border-box' }} onBlur={(event) => {
       if (!title && !event.currentTarget.contains(event.relatedTarget as Node | null)) setActive(false);
     }}>
-      <Select size="small" value={type} onChange={setType} style={{ width: 110 }} options={ISSUE_TYPES.filter((t) => t !== 'subtask').map((t) => ({ value: t, label: ISSUE_TYPE_LABEL[t] }))} />
+      <Select size="small" disabled={!!fixedType} value={type} onChange={setType} style={{ width: 110 }} options={ISSUE_TYPES.filter((t) => t !== 'subtask').map((t) => ({ value: t, label: ISSUE_TYPE_LABEL[t] }))} />
       <Input size="small" autoFocus placeholder="Bạn cần làm gì? (Enter để tạo)" value={title} onChange={(e) => setTitle(e.target.value)} onPressEnter={submit} onKeyDown={(e) => e.key === 'Escape' && setActive(false)} />
     </div>
   );
