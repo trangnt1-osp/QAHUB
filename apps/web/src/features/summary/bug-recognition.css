@@ -103,6 +103,42 @@
   position: relative;
   z-index: 1;
 }
+.bug-recognition-hero::before, .bug-recognition-hero::after {
+  content: '';
+  position: absolute;
+  top: -12%;
+  width: 72%;
+  height: 155%;
+  pointer-events: none;
+  transform-origin: 50% 0;
+  clip-path: polygon(48% 0, 52% 0, 100% 100%, 0 100%);
+  background: linear-gradient(180deg, #fff9d9b3 0%, #ffe89a40 35%, #ffd97600 100%);
+  animation: bug-stage-sweep 2s ease-in-out infinite alternate;
+}
+.bug-recognition-hero::before {
+  left: -18%;
+  --beam-start: -32deg;
+  --beam-end: 42deg;
+}
+.bug-recognition-hero::after {
+  right: -18%;
+  background: linear-gradient(180deg, #d3ffffb3 0%, #81f5ee40 35%, #8ccaff00 100%);
+  --beam-start: 32deg;
+  --beam-end: -42deg;
+  animation-duration: 2.6s;
+  animation-delay: -1.2s;
+}
+@keyframes bug-stage-sweep {
+  from { transform: rotate(var(--beam-start)); opacity: 0.45; }
+  to { transform: rotate(var(--beam-end)); opacity: 0.85; }
+}
+.bug-recognition[data-motion="off"] .bug-recognition-hero::before,
+.bug-recognition[data-motion="off"] .bug-recognition-hero::after {
+  display: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .bug-recognition-hero::before, .bug-recognition-hero::after { display: none; }
+}
 .bug-recognition-confetti {
   position: absolute;
   inset: 0;

@@ -3936,6 +3936,64 @@
           "project-import"
         ]
       }
+    },
+    "/api/v1/ingest/bugs": {
+      "post": {
+        "operationId": "ingestSubmitBugs",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IngestBugsDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Nhận trực tiếp 1–100 Bug đã được QC xác nhận; không cần gửi Playwright run hoặc phân tích AI.",
+        "tags": [
+          "ingest"
+        ]
+      }
+    },
+    "/api/v1/ingest/bug-attachments/{attachmentId}/complete": {
+      "post": {
+        "operationId": "ingestCompleteBugAttachment",
+        "parameters": [
+          {
+            "name": "attachmentId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "ingest"
+        ]
+      }
     }
   },
   "info": {
@@ -5710,6 +5768,167 @@
       "UpdateModuleDto": {
         "type": "object",
         "properties": {}
+      },
+      "IngestBugsDto": {
+        "type": "object",
+        "properties": {
+          "bugs": {
+            "minItems": 1,
+            "uniqueItems": true,
+            "maxItems": 100,
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/IngestBugDto"
+            }
+          }
+        },
+        "required": [
+          "bugs"
+        ]
+      },
+      "IngestBugDto": {
+        "type": "object",
+        "properties": {
+          "externalId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "Stable Bug ID in the external repository, unique within the QA Hub project."
+          },
+          "confirmed": {
+            "type": "number",
+            "enum": [
+              true
+            ],
+            "description": "The submitting QC has already confirmed this is a product Bug."
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255
+          },
+          "steps": {
+            "minItems": 1,
+            "maxItems": 100,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "maxLength": 4000,
+              "minLength": 1
+            }
+          },
+          "expected": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 20000
+          },
+          "actual": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 20000
+          },
+          "preconditions": {
+            "type": "string",
+            "maxLength": 20000
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 20000
+          },
+          "priority": {
+            "type": "string",
+            "enum": [
+              "highest",
+              "high",
+              "medium",
+              "low",
+              "lowest"
+            ]
+          },
+          "assigneeId": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          },
+          "environment": {
+            "type": "string",
+            "maxLength": 200
+          },
+          "branch": {
+            "type": "string",
+            "maxLength": 200
+          },
+          "commitSha": {
+            "type": "string",
+            "maxLength": 100
+          },
+          "testCaseIds": {
+            "maxItems": 100,
+            "type": "array",
+            "items": {
+              "type": "string",
+              "maxLength": 200,
+              "minLength": 1
+            }
+          },
+          "attachments": {
+            "uniqueItems": true,
+            "maxItems": 20,
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BugAttachmentDto"
+            }
+          }
+        },
+        "required": [
+          "externalId",
+          "confirmed",
+          "title",
+          "steps",
+          "expected",
+          "actual"
+        ]
+      },
+      "BugAttachmentDto": {
+        "type": "object",
+        "properties": {
+          "ref": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "file",
+              "screenshot",
+              "video",
+              "trace"
+            ]
+          },
+          "fileName": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255
+          },
+          "mimeType": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "size": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 209715200
+          }
+        },
+        "required": [
+          "ref",
+          "kind",
+          "fileName",
+          "mimeType",
+          "size"
+        ]
       }
     }
   }

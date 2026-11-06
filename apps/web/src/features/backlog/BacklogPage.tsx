@@ -56,7 +56,7 @@ export default function BacklogPage({ fixedType }: { fixedType?: 'bug' } = {}) {
   const canCreate = usePermission(projectKey, 'issue.create');
   const canImport = usePermission(projectKey, 'issue.import');
   const canTransition = usePermission(projectKey, 'issue.transition');
-  const canCreatePeriod = usePermission(projectKey, 'period.create');
+  const canCreatePeriod = usePermission(projectKey, 'period.create') && !fixedType;
   const canEditPeriod = usePermission(projectKey, 'period.edit');
   const canDeletePeriod = usePermission(projectKey, 'period.delete');
   const canStartPeriod = usePermission(projectKey, 'period.start');
@@ -292,6 +292,7 @@ export default function BacklogPage({ fixedType }: { fixedType?: 'bug' } = {}) {
       {isLoading || !layout ? <div className="muted" style={{ padding: 32 }}>Đang tải…</div> : hasFilters && !layout.backlogTotal && layout.sprints.every((block) => !block.issues.length) ? <EmptyState title="Không có item phù hợp." /> : (
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={(e: DragStartEvent) => setDragging(rows.find((r) => r.kind === 'issue' && r.id === String(e.active.id)) ? (rows.find((r) => r.id === String(e.active.id)) as any).issue : null)} onDragEnd={onDragEnd} onDragCancel={() => setDragging(null)}>
           <div ref={scrollRef} style={{ height: 'calc(100vh - 290px)', minHeight: 360, overflow: 'auto', background: '#fff', border: '1px solid #f0f0f0', borderRadius: 6 }} data-testid="backlog-scroll">
+            <div className="backlog-column-header"><span>Công việc</span><span className="backlog-assignee-column">Người được gán</span></div>
             <SortableContext items={issueIds} strategy={verticalListSortingStrategy}>
               <div style={{ height: virtualizer.getTotalSize(), position: 'relative' }}>
                 {vItems.map((v) => {
@@ -449,7 +450,10 @@ const IssueRowView = memo(function IssueRowView({ ordinal, issue, canEdit, canTr
       <StatusTag status={issue.status} transitions={transitions} onTransition={canTransition ? onStatus : undefined} />
       <span className="muted" style={{ width: 48, textAlign: 'right' }}>{fmtEstimate(issue.estimateMinutes)}</span>
       <PriorityIcon priority={issue.priority} />
-      <UserAvatar user={issue.assignee} size={22} />
+      <span className="backlog-assignee-column" title={issue.assignee?.displayName ?? 'Chưa gán'}>
+        <UserAvatar user={issue.assignee} size={22} />
+        <span className={issue.assignee ? undefined : 'muted'}>{issue.assignee?.displayName ?? 'Chưa gán'}</span>
+      </span>
     </div>
   );
 });

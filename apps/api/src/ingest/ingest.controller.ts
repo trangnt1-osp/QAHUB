@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, Injectable, Param, Post, Req, Res, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Injectable, Param, ParseUUIDPipe, Post, Req, Res, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
 import type { Response } from 'express';
@@ -9,6 +9,8 @@ import { AppException } from '../common/errors';
 import { IngestRunDto } from './ingest.dto';
 import { IngestService } from './ingest.service';
 import { ERROR_CODES } from '@ospm/shared';
+import { IngestBugsDto } from './ingest-bugs.dto';
+import { IngestBugsService } from './ingest-bugs.service';
 
 /** Giới hạn 60 request/phút cho mỗi API key (tracker = id của key). */
 @Injectable()
@@ -28,7 +30,18 @@ export class ApiKeyThrottlerGuard extends ThrottlerGuard {
 @Throttle({ default: { ttl: 60_000, limit: 60 } })
 @Controller('ingest')
 export class IngestController {
-  constructor(private readonly ingest: IngestService) {}
+  constructor(private readonly ingest: IngestService, private readonly bugs: IngestBugsService) {}
+
+  /** Nhận trực tiếp 1–100 Bug đã được QC xác nhận; không cần gửi Playwright run hoặc phân tích AI. */
+  @RequireScope('issues:write') @Post('bugs') @HttpCode(200)
+  ingestSubmitBugs(@Req() req: any, @Body() dto: IngestBugsDto) {
+    return this.bugs.submit(req.apiKey, dto);
+  }
+
+  @RequireScope('issues:write') @Post('bug-attachments/:attachmentId/complete') @HttpCode(200)
+  ingestCompleteBugAttachment(@Req() req: any, @Param('attachmentId', ParseUUIDPipe) attachmentId: string) {
+    return this.bugs.completeAttachment(req.apiKey, attachmentId);
+  }
 
   /** Kiểm tra cấu hình API key trong CI. */
   @Get('ping')

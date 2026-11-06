@@ -4,6 +4,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { vi } from 'vitest';
 import BacklogPage from './BacklogPage';
+import { useAuth } from '../auth/authStore';
 
 const getBacklog = vi.hoisted(() => vi.fn());
 vi.mock('../../api/generated/api', async () => ({
@@ -26,7 +27,21 @@ function renderBacklog(fixedType?: 'bug') {
 }
 
 beforeEach(() => { getBacklog.mockResolvedValue({ sprints: [], backlog: { issues: [], total: 0, nextCursor: null } }); });
-afterEach(() => vi.clearAllMocks());
+afterEach(() => { vi.clearAllMocks(); useAuth.setState({ projects: [] }); });
+
+it('hides sprint creation in the Bug list even with period creation permission', async () => {
+  useAuth.setState({ projects: [{ projectId: 1, projectKey: 'DEMO', projectName: 'Demo', role: 'viewer', permissions: ['period.create'] }] });
+  renderBacklog('bug');
+  await waitFor(() => expect(getBacklog).toHaveBeenCalled());
+  expect(screen.queryByRole('button', { name: /Tạo sprint/ })).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Create sprint' })).not.toBeInTheDocument();
+});
+
+it('keeps sprint creation in the regular Backlog for authorized users', async () => {
+  useAuth.setState({ projects: [{ projectId: 1, projectKey: 'DEMO', projectName: 'Demo', role: 'viewer', permissions: ['period.create'] }] });
+  renderBacklog();
+  expect(await screen.findByRole('button', { name: /Tạo sprint/ })).toBeInTheDocument();
+});
 
 it('enforces Bug over a conflicting URL type and retains it when clearing filters', async () => {
   renderBacklog('bug');

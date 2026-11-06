@@ -1,5 +1,7 @@
 # Tích hợp Playwright → OSPM (tạo bug tự động)
 
+> Nếu QC đã xác nhận Bug và chỉ muốn gửi thông tin Bug (không gửi cả lần chạy, không cần AI), dùng [API đẩy Bug trực tiếp](./public-bugs.md) với scope `issues:write`.
+
 Tài liệu cho **đội repo Playwright**. Repo OSPM chỉ cung cấp API; reporter do repo Playwright tự viết và duy trì
 (bản mẫu sao chép được: [`example-reporter.ts`](./example-reporter.ts)).
 
